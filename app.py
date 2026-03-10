@@ -5,6 +5,7 @@ Tracks market cap, LTM revenue, EBITDA, operating cash flow, debt, and cash
 for a watchlist of tickers.
 """
 
+import csv
 import json
 import os
 import sys
@@ -154,6 +155,42 @@ def render_table(data: list[dict]) -> None:
     console.print(table)
 
 
+# ── Export ────────────────────────────────────────────────────────────────────
+
+def export_csv(data: list[dict], path: Path) -> None:
+    """Write current data to a CSV file."""
+    fields = ["Ticker", "Company", "Market Cap ($)", "LTM Revenue ($)", "LTM EBITDA ($)",
+              "LTM Op Cash Flow ($)", "Total Debt ($)", "Cash ($)", "As of"]
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def raw(value) -> str:
+        if value is None:
+            return ""
+        try:
+            return str(round(float(value)))
+        except (TypeError, ValueError):
+            return ""
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        for d in data:
+            if d.get("error"):
+                writer.writerow({"Ticker": d["ticker"], "Company": f"ERROR: {d['error']}"})
+            else:
+                writer.writerow({
+                    "Ticker": d["ticker"],
+                    "Company": d["name"],
+                    "Market Cap ($)": raw(d["market_cap"]),
+                    "LTM Revenue ($)": raw(d["revenue"]),
+                    "LTM EBITDA ($)": raw(d["ebitda"]),
+                    "LTM Op Cash Flow ($)": raw(d["ocf"]),
+                    "Total Debt ($)": raw(d["debt"]),
+                    "Cash ($)": raw(d["cash"]),
+                    "As of": timestamp,
+                })
+
+
 # ── Main loop ─────────────────────────────────────────────────────────────────
 
 HELP = """
@@ -162,6 +199,7 @@ HELP = """
   [cyan]remove[/cyan]  <TICKER> [TICKER …]  — Remove tickers from watchlist
   [cyan]refresh[/cyan]                      — Re-fetch data for all tickers
   [cyan]list[/cyan]                         — Show current watchlist
+  [cyan]export[/cyan]  [filename.csv]       — Export data to CSV (opens in Excel)
   [cyan]help[/cyan]                         — Show this message
   [cyan]quit[/cyan]                         — Exit
 """
@@ -249,6 +287,17 @@ def main() -> None:
             else:
                 last_data = fetch_all(tickers)
                 render_table(last_data)
+
+        elif cmd == "export":
+            if not last_data:
+                console.print("[yellow]No data to export. Run [bold]refresh[/bold] first.[/yellow]")
+                continue
+            filename = args[0] if args else f"watchlist_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            if not filename.lower().endswith(".csv"):
+                filename += ".csv"
+            out = Path(filename)
+            export_csv(last_data, out)
+            console.print(f"[green]Exported to:[/green] [bold]{out.resolve()}[/bold]")
 
         else:
             console.print(f"[red]Unknown command:[/red] [bold]{cmd}[/bold]. Type [cyan]help[/cyan] for options.")

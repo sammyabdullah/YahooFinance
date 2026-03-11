@@ -8,6 +8,7 @@ for a watchlist of tickers.
 import csv
 import json
 import os
+import statistics
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -49,6 +50,16 @@ def fmt(value, prefix="$", scale=1e9, decimals=1, suffix="B") -> str:
         return "—"
 
 
+def fmt_pct(value, decimals=1) -> str:
+    """Format a ratio (0.15) as a signed percentage (+15.0%)."""
+    if value is None:
+        return "—"
+    try:
+        return f"{float(value)*100:+.{decimals}f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
 def fetch_ticker_data(ticker: str) -> dict:
     """Fetch all required metrics for a single ticker."""
     try:
@@ -85,6 +96,9 @@ def fetch_ticker_data(ticker: str) -> dict:
         # Cash (total cash)
         cash = info.get("totalCash")
 
+        # YoY Revenue Growth (trailing)
+        rev_growth = info.get("revenueGrowth")
+
         name = info.get("shortName") or info.get("longName") or ticker
 
         return {
@@ -92,6 +106,7 @@ def fetch_ticker_data(ticker: str) -> dict:
             "name": name,
             "market_cap": market_cap,
             "revenue": revenue,
+            "rev_growth": rev_growth,
             "ebitda": ebitda,
             "ocf": ocf,
             "debt": debt,
@@ -110,6 +125,35 @@ def fetch_all(tickers: list[str]) -> list[dict]:
     return results
 
 
+# ── Summary stats ─────────────────────────────────────────────────────────────
+
+NUMERIC_KEYS = ["market_cap", "revenue", "rev_growth", "ebitda", "ocf", "debt", "cash"]
+
+
+def _agg(subset: list[dict]) -> dict:
+    """Return median and mean for each numeric key over a subset of rows."""
+    result = {}
+    for k in NUMERIC_KEYS:
+        vals = [d[k] for d in subset if d.get(k) is not None]
+        result[k] = {
+            "median": statistics.median(vals) if vals else None,
+            "mean":   statistics.mean(vals)   if vals else None,
+        }
+    return result
+
+
+def summary_stats(data: list[dict]):
+    """Return (all_agg, above_agg, median_growth, n_above) for valid rows."""
+    valid = [d for d in data if not d.get("error")]
+    all_agg = _agg(valid)
+    median_growth = all_agg["rev_growth"]["median"]
+    if median_growth is not None:
+        above = [d for d in valid if d.get("rev_growth") is not None and d["rev_growth"] > median_growth]
+    else:
+        above = []
+    return all_agg, _agg(above), median_growth, len(above)
+
+
 # ── Display ───────────────────────────────────────────────────────────────────
 
 def render_table(data: list[dict]) -> None:
@@ -125,32 +169,58 @@ def render_table(data: list[dict]) -> None:
         title_justify="left",
     )
 
-    table.add_column("Ticker", style="bold cyan", no_wrap=True)
-    table.add_column("Company", style="white", max_width=28)
-    table.add_column("Mkt Cap", justify="right", style="green")
-    table.add_column("LTM Rev", justify="right", style="green")
-    table.add_column("LTM EBITDA", justify="right", style="green")
-    table.add_column("LTM Op CF", justify="right", style="green")
-    table.add_column("Debt", justify="right", style="red")
-    table.add_column("Cash", justify="right", style="bright_green")
+    table.add_column("Company",     style="white",       max_width=28)
+    table.add_column("Ticker",      style="bold cyan",   no_wrap=True)
+    table.add_column("Mkt Cap",     justify="right",     style="green")
+    table.add_column("LTM Rev",     justify="right",     style="green")
+    table.add_column("Rev Growth",  justify="right",     style="yellow")
+    table.add_column("LTM EBITDA",  justify="right",     style="green")
+    table.add_column("LTM Op CF",   justify="right",     style="green")
+    table.add_column("Debt",        justify="right",     style="red")
+    table.add_column("Cash",        justify="right",     style="bright_green")
 
-    for d in data:
+    for i, d in enumerate(data):
+        last = (i == len(data) - 1)
         if d.get("error"):
             table.add_row(
-                d["ticker"], f"[red]Error: {d['error'][:40]}[/]",
-                "—", "—", "—", "—", "—", "—",
+                f"[red]Error: {d['error'][:40]}[/]", d["ticker"],
+                "—", "—", "—", "—", "—", "—", "—",
+                end_section=last,
             )
         else:
             table.add_row(
-                d["ticker"],
-                d["name"],
+                d["name"], d["ticker"],
                 fmt(d["market_cap"]),
                 fmt(d["revenue"]),
+                fmt_pct(d.get("rev_growth")),
                 fmt(d["ebitda"]),
                 fmt(d["ocf"]),
                 fmt(d["debt"]),
                 fmt(d["cash"]),
+                end_section=last,
             )
+
+    valid = [d for d in data if not d.get("error")]
+    if valid:
+        all_agg, above_agg, _, n_above = summary_stats(data)
+
+        def stat_row(label: str, agg: dict, stat: str) -> list:
+            g = agg["rev_growth"][stat]
+            return [
+                f"[dim italic]{label}[/]", "",
+                fmt(agg["market_cap"][stat]),
+                fmt(agg["revenue"][stat]),
+                fmt_pct(g) if g is not None else "—",
+                fmt(agg["ebitda"][stat]),
+                fmt(agg["ocf"][stat]),
+                fmt(agg["debt"][stat]),
+                fmt(agg["cash"][stat]),
+            ]
+
+        table.add_row(*stat_row("All — Median", all_agg, "median"))
+        table.add_row(*stat_row("All — Average", all_agg, "mean"), end_section=True)
+        table.add_row(*stat_row(f"Above Median Growth — Median  (n={n_above})", above_agg, "median"))
+        table.add_row(*stat_row(f"Above Median Growth — Average (n={n_above})", above_agg, "mean"))
 
     console.print(table)
 
@@ -158,9 +228,13 @@ def render_table(data: list[dict]) -> None:
 # ── Export ────────────────────────────────────────────────────────────────────
 
 def export_csv(data: list[dict], path: Path) -> None:
-    """Write current data to a CSV file."""
-    fields = ["Ticker", "Company", "Market Cap ($)", "LTM Revenue ($)", "LTM EBITDA ($)",
-              "LTM Op Cash Flow ($)", "Total Debt ($)", "Cash ($)", "As of"]
+    """Write current data (plus summary rows) to a CSV file."""
+    fields = [
+        "Company", "Ticker",
+        "Market Cap ($)", "LTM Revenue ($)", "Rev Growth (YoY)",
+        "LTM EBITDA ($)", "LTM Op Cash Flow ($)", "Total Debt ($)", "Cash ($)",
+        "As of",
+    ]
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def raw(value) -> str:
@@ -171,24 +245,56 @@ def export_csv(data: list[dict], path: Path) -> None:
         except (TypeError, ValueError):
             return ""
 
+    def pct(value) -> str:
+        if value is None:
+            return ""
+        try:
+            return f"{float(value)*100:+.2f}%"
+        except (TypeError, ValueError):
+            return ""
+
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         for d in data:
             if d.get("error"):
-                writer.writerow({"Ticker": d["ticker"], "Company": f"ERROR: {d['error']}"})
+                writer.writerow({"Company": f"ERROR: {d['error']}", "Ticker": d["ticker"]})
             else:
                 writer.writerow({
-                    "Ticker": d["ticker"],
                     "Company": d["name"],
+                    "Ticker": d["ticker"],
                     "Market Cap ($)": raw(d["market_cap"]),
                     "LTM Revenue ($)": raw(d["revenue"]),
+                    "Rev Growth (YoY)": pct(d.get("rev_growth")),
                     "LTM EBITDA ($)": raw(d["ebitda"]),
                     "LTM Op Cash Flow ($)": raw(d["ocf"]),
                     "Total Debt ($)": raw(d["debt"]),
                     "Cash ($)": raw(d["cash"]),
                     "As of": timestamp,
                 })
+
+        valid = [d for d in data if not d.get("error")]
+        if valid:
+            all_agg, above_agg, _, n_above = summary_stats(data)
+            writer.writerow({})  # blank separator
+
+            def stat_csv_row(label: str, agg: dict, stat: str) -> dict:
+                return {
+                    "Company": label,
+                    "Market Cap ($)": raw(agg["market_cap"][stat]),
+                    "LTM Revenue ($)": raw(agg["revenue"][stat]),
+                    "Rev Growth (YoY)": pct(agg["rev_growth"][stat]),
+                    "LTM EBITDA ($)": raw(agg["ebitda"][stat]),
+                    "LTM Op Cash Flow ($)": raw(agg["ocf"][stat]),
+                    "Total Debt ($)": raw(agg["debt"][stat]),
+                    "Cash ($)": raw(agg["cash"][stat]),
+                }
+
+            writer.writerow(stat_csv_row("All — Median", all_agg, "median"))
+            writer.writerow(stat_csv_row("All — Average", all_agg, "mean"))
+            writer.writerow({})
+            writer.writerow(stat_csv_row(f"Above Median Growth — Median (n={n_above})", above_agg, "median"))
+            writer.writerow(stat_csv_row(f"Above Median Growth — Average (n={n_above})", above_agg, "mean"))
 
 
 # ── Main loop ─────────────────────────────────────────────────────────────────

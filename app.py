@@ -101,6 +101,17 @@ def fetch_ticker_data(ticker: str) -> dict:
 
         name = info.get("shortName") or info.get("longName") or ticker
 
+        # Enterprise Value = Market Cap + Debt - Cash
+        if market_cap is not None and debt is not None and cash is not None:
+            ev = market_cap + debt - cash
+        elif market_cap is not None:
+            ev = market_cap + (debt or 0) - (cash or 0)
+        else:
+            ev = None
+
+        # Revenue Multiple = EV / LTM Revenue
+        rev_multiple = (ev / revenue) if (ev is not None and revenue) else None
+
         return {
             "ticker": ticker.upper(),
             "name": name,
@@ -111,6 +122,8 @@ def fetch_ticker_data(ticker: str) -> dict:
             "ocf": ocf,
             "debt": debt,
             "cash": cash,
+            "ev": ev,
+            "rev_multiple": rev_multiple,
             "error": None,
         }
     except Exception as e:
@@ -127,7 +140,7 @@ def fetch_all(tickers: list[str]) -> list[dict]:
 
 # ── Summary stats ─────────────────────────────────────────────────────────────
 
-NUMERIC_KEYS = ["market_cap", "revenue", "rev_growth", "ebitda", "ocf", "debt", "cash"]
+NUMERIC_KEYS = ["market_cap", "revenue", "rev_growth", "ebitda", "ocf", "debt", "cash", "ev", "rev_multiple"]
 
 
 def _agg(subset: list[dict]) -> dict:
@@ -178,16 +191,19 @@ def render_table(data: list[dict]) -> None:
     table.add_column("LTM Op CF",   justify="right",     style="green")
     table.add_column("Debt",        justify="right",     style="red")
     table.add_column("Cash",        justify="right",     style="bright_green")
+    table.add_column("Ent. Value",  justify="right",     style="green")
+    table.add_column("Rev Mult.",   justify="right",     style="magenta")
 
     for i, d in enumerate(data):
         last = (i == len(data) - 1)
         if d.get("error"):
             table.add_row(
                 f"[red]Error: {d['error'][:40]}[/]", d["ticker"],
-                "—", "—", "—", "—", "—", "—", "—",
+                "—", "—", "—", "—", "—", "—", "—", "—", "—",
                 end_section=last,
             )
         else:
+            rev_mult = d.get("rev_multiple")
             table.add_row(
                 d["name"], d["ticker"],
                 fmt(d["market_cap"]),
@@ -197,6 +213,8 @@ def render_table(data: list[dict]) -> None:
                 fmt(d["ocf"]),
                 fmt(d["debt"]),
                 fmt(d["cash"]),
+                fmt(d.get("ev")),
+                f"{rev_mult:.1f}x" if rev_mult is not None else "—",
                 end_section=last,
             )
 
@@ -206,6 +224,7 @@ def render_table(data: list[dict]) -> None:
 
         def stat_row(label: str, agg: dict, stat: str) -> list:
             g = agg["rev_growth"][stat]
+            rm = agg["rev_multiple"][stat]
             return [
                 f"[dim italic]{label}[/]", "",
                 fmt(agg["market_cap"][stat]),
@@ -215,6 +234,8 @@ def render_table(data: list[dict]) -> None:
                 fmt(agg["ocf"][stat]),
                 fmt(agg["debt"][stat]),
                 fmt(agg["cash"][stat]),
+                fmt(agg["ev"][stat]),
+                f"{rm:.1f}x" if rm is not None else "—",
             ]
 
         table.add_row(*stat_row("All — Median", all_agg, "median"))
@@ -233,6 +254,7 @@ def export_csv(data: list[dict], path: Path) -> None:
         "Company", "Ticker",
         "Market Cap ($)", "LTM Revenue ($)", "Rev Growth (YoY)",
         "LTM EBITDA ($)", "LTM Op Cash Flow ($)", "Total Debt ($)", "Cash ($)",
+        "Enterprise Value ($)", "Revenue Multiple",
         "As of",
     ]
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -260,6 +282,7 @@ def export_csv(data: list[dict], path: Path) -> None:
             if d.get("error"):
                 writer.writerow({"Company": f"ERROR: {d['error']}", "Ticker": d["ticker"]})
             else:
+                rev_mult = d.get("rev_multiple")
                 writer.writerow({
                     "Company": d["name"],
                     "Ticker": d["ticker"],
@@ -270,6 +293,8 @@ def export_csv(data: list[dict], path: Path) -> None:
                     "LTM Op Cash Flow ($)": raw(d["ocf"]),
                     "Total Debt ($)": raw(d["debt"]),
                     "Cash ($)": raw(d["cash"]),
+                    "Enterprise Value ($)": raw(d.get("ev")),
+                    "Revenue Multiple": f"{rev_mult:.2f}x" if rev_mult is not None else "",
                     "As of": timestamp,
                 })
 
@@ -279,6 +304,7 @@ def export_csv(data: list[dict], path: Path) -> None:
             writer.writerow({})  # blank separator
 
             def stat_csv_row(label: str, agg: dict, stat: str) -> dict:
+                rm = agg["rev_multiple"][stat]
                 return {
                     "Company": label,
                     "Market Cap ($)": raw(agg["market_cap"][stat]),
@@ -288,6 +314,8 @@ def export_csv(data: list[dict], path: Path) -> None:
                     "LTM Op Cash Flow ($)": raw(agg["ocf"][stat]),
                     "Total Debt ($)": raw(agg["debt"][stat]),
                     "Cash ($)": raw(agg["cash"][stat]),
+                    "Enterprise Value ($)": raw(agg["ev"][stat]),
+                    "Revenue Multiple": f"{rm:.2f}x" if rm is not None else "",
                 }
 
             writer.writerow(stat_csv_row("All — Median", all_agg, "median"))

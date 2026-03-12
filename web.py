@@ -180,7 +180,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <body>
 <header>
   <h1>Stock Watchlist</h1>
-  <span class="subtitle">powered by Yahoo Finance</span>
+  <span class="subtitle">powered by <a href="https://www.blossomstreetventures.com" target="_blank" style="color:#58a6ff;font-weight:700;text-decoration:none;">Blossom Street Ventures</a></span>
 </header>
 <div class="meta-bar">
   <span>Last updated: <strong>{{ last_updated }}</strong></span>

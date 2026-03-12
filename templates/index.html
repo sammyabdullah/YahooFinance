@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock Watchlist</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+      padding: 24px 20px 48px;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #58a6ff;
+      letter-spacing: -0.02em;
+    }
+    header span.subtitle {
+      font-size: 0.85rem;
+      color: #8b949e;
+    }
+
+    .meta-bar {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 20px;
+      font-size: 0.82rem;
+      color: #8b949e;
+    }
+    .meta-bar strong { color: #c9d1d9; }
+
+    /* ── Refresh button ── */
+    #refresh-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 14px;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #21262d;
+      color: #c9d1d9;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    #refresh-btn:hover { background: #30363d; border-color: #58a6ff; }
+    #refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    #refresh-btn svg { width: 14px; height: 14px; }
+
+    #refresh-status {
+      font-size: 0.78rem;
+      color: #8b949e;
+      transition: opacity 0.3s;
+    }
+
+    /* ── Table wrapper ── */
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 10px;
+      border: 1px solid #21262d;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+
+    thead th {
+      background: #161b22;
+      color: #8b949e;
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 10px 14px;
+      text-align: right;
+      border-bottom: 1px solid #21262d;
+      cursor: pointer;
+      user-select: none;
+    }
+    thead th:first-child,
+    thead th:nth-child(2) { text-align: left; }
+    thead th:hover { color: #58a6ff; }
+    thead th.sorted-asc::after  { content: " ↑"; color: #58a6ff; }
+    thead th.sorted-desc::after { content: " ↓"; color: #58a6ff; }
+
+    tbody tr { border-bottom: 1px solid #21262d; transition: background 0.1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #161b22; }
+
+    td {
+      padding: 10px 14px;
+      text-align: right;
+      color: #c9d1d9;
+    }
+    td:first-child { text-align: left; font-weight: 500; color: #e6edf3; }
+    td:nth-child(2) {
+      text-align: left;
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: #58a6ff;
+      font-weight: 600;
+    }
+
+    .val-null { color: #484f58; }
+    .val-pos  { color: #3fb950; }
+    .val-neg  { color: #f85149; }
+    .val-debt { color: #f85149; }
+    .val-cash { color: #3fb950; }
+    .val-ev   { color: #58a6ff; }
+    .val-mult { color: #d2a8ff; font-weight: 600; }
+
+    /* ── Stats section ── */
+    .stats-header td {
+      background: #0d1117;
+      color: #58a6ff;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 14px 14px 6px;
+      font-weight: 700;
+      border-top: 2px solid #21262d;
+    }
+
+    .stat-row td {
+      background: #13181f;
+      color: #8b949e;
+      font-style: italic;
+      font-size: 0.82rem;
+      padding: 7px 14px;
+    }
+    .stat-row td:first-child { color: #8b949e; font-weight: 400; }
+
+    /* ── Error row ── */
+    .error-row td { color: #f85149; font-size: 0.82rem; }
+
+    /* ── No data ── */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #8b949e;
+    }
+    .empty-state p { margin-bottom: 8px; }
+
+    /* ── Spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin 1s linear infinite; display: inline-block; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Stock Watchlist</h1>
+  <span class="subtitle">powered by Yahoo Finance</span>
+</header>
+
+<div class="meta-bar">
+  <span>Last updated: <strong>{{ last_updated }}</strong></span>
+  <span>{{ ticker_count }} ticker{{ 's' if ticker_count != 1 else '' }}</span>
+  <button id="refresh-btn" onclick="triggerRefresh()">
+    <svg viewBox="0 0 16 16" fill="currentColor">
+      <path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+      <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+    </svg>
+    Refresh Now
+  </button>
+  <span id="refresh-status"></span>
+</div>
+
+<div class="table-wrap">
+  {% if rows %}
+  <table id="watchlist">
+    <thead>
+      <tr>
+        <th onclick="sortTable(0)">Company</th>
+        <th onclick="sortTable(1)">Ticker</th>
+        <th onclick="sortTable(2)" title="Market Capitalization ($B)">Mkt Cap</th>
+        <th onclick="sortTable(3)" title="Last Twelve Months Revenue ($B)">LTM Rev</th>
+        <th onclick="sortTable(4)" title="Year-over-Year Revenue Growth">Rev Growth</th>
+        <th onclick="sortTable(5)" title="LTM EBITDA ($B)">LTM EBITDA</th>
+        <th onclick="sortTable(6)" title="LTM Operating Cash Flow ($B)">LTM Op CF</th>
+        <th onclick="sortTable(7)" title="Total Debt ($B)">Debt</th>
+        <th onclick="sortTable(8)" title="Total Cash ($B)">Cash</th>
+        <th onclick="sortTable(9)" title="Enterprise Value = Mkt Cap + Debt − Cash ($B)">Ent. Value</th>
+        <th onclick="sortTable(10)" title="Enterprise Value / LTM Revenue">Rev Mult.</th>
+      </tr>
+    </thead>
+    <tbody id="ticker-rows">
+      {% for row in rows %}
+        {% if row.error %}
+        <tr class="error-row">
+          <td colspan="11">Error ({{ row.ticker }}): {{ row.error[:80] }}</td>
+        </tr>
+        {% else %}
+        <tr
+          data-market-cap="{{ row.market_cap if row.market_cap is not none else '' }}"
+          data-revenue="{{ row.revenue if row.revenue is not none else '' }}"
+          data-rev-growth="{{ row.rev_growth if row.rev_growth is not none else '' }}"
+          data-ebitda="{{ row.ebitda if row.ebitda is not none else '' }}"
+          data-ocf="{{ row.ocf if row.ocf is not none else '' }}"
+          data-debt="{{ row.debt if row.debt is not none else '' }}"
+          data-cash="{{ row.cash if row.cash is not none else '' }}"
+          data-ev="{{ row.ev if row.ev is not none else '' }}"
+          data-rev-multiple="{{ row.rev_multiple if row.rev_multiple is not none else '' }}"
+        >
+          <td>{{ row.name }}</td>
+          <td>{{ row.ticker }}</td>
+          <td>{% if row.market_cap is not none %}<span class="val-pos">${{ row.market_cap }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+          <td>{% if row.revenue is not none %}<span class="val-pos">${{ row.revenue }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+          <td>
+            {% if row.rev_growth is not none %}
+              <span class="{{ 'val-pos' if row.rev_growth >= 0 else 'val-neg' }}">
+                {{ '+' if row.rev_growth >= 0 else '' }}{{ row.rev_growth }}%
+              </span>
+            {% else %}<span class="val-null">—</span>{% endif %}
+          </td>
+          <td>{% if row.ebitda is not none %}<span class="{{ 'val-pos' if row.ebitda >= 0 else 'val-neg' }}">${{ row.ebitda }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+          <td>{% if row.ocf is not none %}<span class="{{ 'val-pos' if row.ocf >= 0 else 'val-neg' }}">${{ row.ocf }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+          <td>{% if row.debt is not none %}<span class="val-debt">${{ row.debt }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+          <td>{% if row.cash is not none %}<span class="val-cash">${{ row.cash }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+          <td>{% if row.ev is not none %}<span class="val-ev">${{ row.ev }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+          <td>{% if row.rev_multiple is not none %}<span class="val-mult">{{ row.rev_multiple }}x</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+
+    {% if stats %}
+    <tbody>
+      <tr class="stats-header"><td colspan="11">Summary Statistics</td></tr>
+      {% for s in stats %}
+      <tr class="stat-row">
+        <td colspan="2">{{ s.name }}</td>
+        <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
+        <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
+        <td>
+          {% if s.rev_growth is not none %}
+            {{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%
+          {% else %}—{% endif %}
+        </td>
+        <td>{% if s.ebitda is not none %}${{ s.ebitda }}B{% else %}—{% endif %}</td>
+        <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
+        <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
+        <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
+        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
+        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endif %}
+  </table>
+
+  {% else %}
+  <div class="empty-state">
+    <p>No data yet.</p>
+    <p>Add tickers in the CLI app (<code>python app.py</code>), then click <strong>Refresh Now</strong>.</p>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+  // ── Sorting ──────────────────────────────────────────────────────────────────
+  let sortCol = -1, sortAsc = true;
+  const dataAttrs = [null, null,
+    "market-cap", "revenue", "rev-growth", "ebitda",
+    "ocf", "debt", "cash", "ev", "rev-multiple"];
+
+  function sortTable(col) {
+    const tbody = document.getElementById("ticker-rows");
+    const rows  = Array.from(tbody.querySelectorAll("tr"));
+
+    if (sortCol === col) { sortAsc = !sortAsc; }
+    else { sortCol = col; sortAsc = true; }
+
+    rows.sort((a, b) => {
+      let av, bv;
+      if (col <= 1) {
+        const idx = col === 0 ? 0 : 1;
+        av = a.cells[idx]?.textContent.trim() ?? "";
+        bv = b.cells[idx]?.textContent.trim() ?? "";
+        return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
+      const attr = dataAttrs[col];
+      av = parseFloat(a.dataset[attr.replace(/-([a-z])/g, (_, c) => c.toUpperCase())]);
+      bv = parseFloat(b.dataset[attr.replace(/-([a-z])/g, (_, c) => c.toUpperCase())]);
+      if (isNaN(av)) av = sortAsc ? Infinity : -Infinity;
+      if (isNaN(bv)) bv = sortAsc ? Infinity : -Infinity;
+      return sortAsc ? av - bv : bv - av;
+    });
+
+    rows.forEach(r => tbody.appendChild(r));
+
+    document.querySelectorAll("thead th").forEach((th, i) => {
+      th.classList.remove("sorted-asc", "sorted-desc");
+      if (i === col) th.classList.add(sortAsc ? "sorted-asc" : "sorted-desc");
+    });
+  }
+
+  // ── Refresh ──────────────────────────────────────────────────────────────────
+  function triggerRefresh() {
+    const btn = document.getElementById("refresh-btn");
+    const status = document.getElementById("refresh-status");
+    btn.disabled = true;
+    btn.querySelector("svg").classList.add("spin");
+    status.textContent = "Fetching data…";
+
+    fetch("/api/refresh", { method: "POST" })
+      .then(r => r.json())
+      .then(() => {
+        status.textContent = "Fetching… page will reload when done.";
+        pollForUpdate();
+      })
+      .catch(() => {
+        status.textContent = "Error starting refresh.";
+        btn.disabled = false;
+        btn.querySelector("svg").classList.remove("spin");
+      });
+  }
+
+  function pollForUpdate() {
+    const start = Date.now();
+    const interval = setInterval(() => {
+      fetch("/api/status")
+        .then(r => r.json())
+        .then(data => {
+          if (data.last_updated) {
+            const updated = new Date(data.last_updated).getTime();
+            if (updated > start - 2000) {
+              clearInterval(interval);
+              location.reload();
+            }
+          }
+        });
+    }, 3000);
+    // Give up polling after 3 minutes
+    setTimeout(() => clearInterval(interval), 180000);
+  }
+</script>
+</body>
+</html>

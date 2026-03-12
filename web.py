@@ -119,7 +119,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Stock Watchlist</title>
+  <title>SaaS Multiples Index</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -179,7 +179,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </head>
 <body>
 <header>
-  <h1>Stock Watchlist</h1>
+  <h1>SaaS Multiples Index</h1>
   <span class="subtitle">powered by <a href="https://www.blossomstreetventures.com" target="_blank" style="color:#58a6ff;font-weight:700;text-decoration:none;">Blossom Street Ventures</a></span>
 </header>
 <div class="meta-bar">

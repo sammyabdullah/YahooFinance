@@ -1,8 +1,0 @@
-services:
-  - type: web
-    name: saas-multiples-index
-    env: python
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn web:app
-    autoDeploy: true

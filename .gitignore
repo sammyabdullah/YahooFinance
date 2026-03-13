@@ -4,4 +4,4 @@ __pycache__/
 .env
 venv/
 .venv/
-tickers.json
+web_cache.json

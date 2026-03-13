@@ -6,12 +6,14 @@ Run with: python web.py
 Then open: http://localhost:5000
 """
 
+import csv
+import io
 import json
 import threading
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template_string, request
+from flask import Flask, jsonify, render_template_string, request, Response
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # Reuse data logic from app.py
@@ -131,8 +133,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     header span.subtitle { font-size: 0.85rem; color: #8b949e; }
     .meta-bar { display: flex; align-items: center; gap: 20px; margin-bottom: 20px; font-size: 0.82rem; color: #8b949e; }
     .meta-bar strong { color: #c9d1d9; }
-    #refresh-btn {
+    .meta-btn {
       display: inline-flex; align-items: center; gap: 6px; padding: 5px 14px;
+      border-radius: 6px; border: 1px solid #30363d; background: #21262d;
+      color: #c9d1d9; font-size: 0.82rem; cursor: pointer; transition: background 0.15s, border-color 0.15s;
+      text-decoration: none;
+    }
+    .meta-btn:hover { background: #30363d; border-color: #58a6ff; }
+    .meta-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .meta-btn svg { width: 14px; height: 14px; }
+    #refresh-btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 14px;
       border-radius: 6px; border: 1px solid #30363d; background: #21262d;
       color: #c9d1d9; font-size: 0.82rem; cursor: pointer; transition: background 0.15s, border-color 0.15s;
     }
@@ -192,6 +202,13 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     </svg>
     Refresh Now
   </button>
+  <a href="/export.csv" class="meta-btn" download>
+    <svg viewBox="0 0 16 16" fill="currentColor">
+      <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+      <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+    </svg>
+    Export CSV
+  </a>
   <span id="refresh-status"></span>
 </div>
 <div class="table-wrap">
@@ -390,22 +407,63 @@ def api_status():
         })
 
 
+@app.route("/export.csv")
+def export_csv():
+    """Return all ticker data as a downloadable CSV file."""
+    with _lock:
+        raw_data = list(_cache.get("data", []))
+        last_updated = _cache.get("last_updated", "")
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow([
+        "Company", "Ticker",
+        "Market Cap ($B)", "LTM Revenue ($B)", "Rev Growth (%)",
+        "LTM EBITDA ($B)", "LTM Op CF ($B)",
+        "Debt ($B)", "Cash ($B)", "Enterprise Value ($B)", "Rev Multiple (x)",
+        "As Of",
+    ])
+
+    for d in raw_data:
+        if d.get("error"):
+            writer.writerow([d.get("ticker", ""), "", "", "", "", "", "", "", "", "", "", "ERROR: " + d["error"]])
+            continue
+        writer.writerow([
+            d.get("name", ""),
+            d.get("ticker", ""),
+            fmt_billions(d.get("market_cap")),
+            fmt_billions(d.get("revenue")),
+            fmt_pct(d.get("rev_growth")),
+            fmt_billions(d.get("ebitda")),
+            fmt_billions(d.get("ocf")),
+            fmt_billions(d.get("debt")),
+            fmt_billions(d.get("cash")),
+            fmt_billions(d.get("ev")),
+            round(d["rev_multiple"], 1) if d.get("rev_multiple") is not None else "",
+            last_updated[:10] if last_updated else "",
+        ])
+
+    csv_bytes = output.getvalue().encode("utf-8")
+    return Response(
+        csv_bytes,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=saas-multiples.csv"},
+    )
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
+# Runs at import time so both `python web.py` and `gunicorn web:app` initialize.
+
+load_cache()
+if not _cache.get("data"):
+    threading.Thread(target=refresh_data, daemon=True).start()
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(refresh_data, "cron", hour=16, minute=30, id="daily_refresh")
+scheduler.start()
 
 if __name__ == "__main__":
-    load_cache()
-
-    # If no cached data yet, fetch immediately on startup
-    if not _cache.get("data"):
-        t = threading.Thread(target=refresh_data, daemon=True)
-        t.start()
-
-    # Schedule daily refresh at 4:30 PM (after US market close)
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(refresh_data, "cron", hour=16, minute=30, id="daily_refresh")
-    scheduler.start()
-
     print("Starting Yahoo Finance Dashboard at http://localhost:5000")
     print("Data refreshes daily at 4:30 PM. Press Ctrl+C to stop.\n")
-
     app.run(debug=False, port=5000, use_reloader=False)

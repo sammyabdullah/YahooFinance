@@ -10,7 +10,8 @@ import csv
 import io
 import json
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template_string, request, Response
@@ -377,7 +378,11 @@ def index():
     if last_updated:
         try:
             dt = datetime.fromisoformat(last_updated)
-            last_updated_fmt = dt.strftime("%B %-d, %Y at %-I:%M %p UTC")
+            eastern = ZoneInfo("America/New_York")
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            dt_et = dt.astimezone(eastern)
+            last_updated_fmt = dt_et.strftime("%B %-d, %Y at %-I:%M %p ET")
         except Exception:
             last_updated_fmt = last_updated
     else:
@@ -462,7 +467,7 @@ if not _cache.get("data"):
     threading.Thread(target=refresh_data, daemon=True).start()
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(refresh_data, "cron", hour=16, minute=30, id="daily_refresh")
+scheduler.add_job(refresh_data, "cron", hour=16, minute=30, id="daily_refresh", timezone="America/New_York")
 scheduler.start()
 
 if __name__ == "__main__":

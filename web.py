@@ -193,7 +193,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <span class="subtitle">powered by <a href="https://www.blossomstreetventures.com" target="_blank" style="color:#58a6ff;font-weight:700;text-decoration:none;">Blossom Street Ventures</a></span>
 </header>
 <div class="meta-bar">
-  <span>Last updated: <strong id="last-updated-display" data-iso="{{ last_updated_iso }}">{{ last_updated_iso or 'Never' }}</strong></span>
+  <span>Last updated: <strong>{{ last_updated }}</strong></span>
   <span>{{ ticker_count }} ticker{{ 's' if ticker_count != 1 else '' }}</span>
   <button id="refresh-btn" onclick="triggerRefresh()">
     <svg viewBox="0 0 16 16" fill="currentColor">
@@ -347,18 +347,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     setTimeout(() => clearInterval(interval), 180000);
   }
 
-  (function() {
-    const el = document.getElementById("last-updated-display");
-    if (!el) return;
-    const iso = el.dataset.iso;
-    if (!iso) { el.textContent = "Never"; return; }
-    const dt = new Date(iso.endsWith("Z") ? iso : iso + "Z");
-    if (isNaN(dt)) return;
-    el.textContent = dt.toLocaleString("en-US", {
-      month: "long", day: "numeric", year: "numeric",
-      hour: "numeric", minute: "2-digit", hour12: true
-    });
-  })();
 </script>
 </body>
 </html>"""
@@ -385,11 +373,20 @@ def index():
             build_stat_row(f"Above Median Growth — Average (n={n_above})", above_agg, "mean"),
         ]
 
+    if last_updated:
+        try:
+            dt = datetime.fromisoformat(last_updated)
+            last_updated_fmt = dt.strftime("%B %-d, %Y at %-I:%M %p UTC")
+        except Exception:
+            last_updated_fmt = last_updated
+    else:
+        last_updated_fmt = "Never"
+
     return render_template_string(
         HTML_TEMPLATE,
         rows=rows,
         stats=stats,
-        last_updated_iso=last_updated or "",
+        last_updated=last_updated_fmt,
         ticker_count=len(load_tickers()),
     )
 

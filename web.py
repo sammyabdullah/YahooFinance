@@ -179,7 +179,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       letter-spacing: 0.06em; padding: 14px 14px 6px; font-weight: 700; border-top: 2px solid #21262d;
     }
     .stat-row td { background: #13181f; color: #8b949e; font-style: italic; font-size: 0.82rem; padding: 7px 14px; }
-    .stat-row td:first-child { color: #8b949e; font-weight: 400; }
+    .stat-row td:first-child { color: #8b949e; font-weight: 400; text-align: left; }
+    .stat-row td:nth-child(n+2) { text-align: right; font-family: inherit; font-size: 0.82rem; color: #8b949e; font-weight: 400; }
     .error-row td { color: #f85149; font-size: 0.82rem; }
     .empty-state { text-align: center; padding: 60px 20px; color: #8b949e; }
     .empty-state p { margin-bottom: 8px; }

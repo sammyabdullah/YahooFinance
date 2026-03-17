@@ -110,7 +110,7 @@ def refresh_data() -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Refreshing {len(tickers)} tickers…")
     data = [fetch_ticker_data(t) for t in tickers]
     with _lock:
-        _cache = {"data": data, "last_updated": datetime.now().isoformat()}
+        _cache = {"data": data, "last_updated": datetime.now(timezone.utc).isoformat()}
     save_cache()
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Refresh complete.")
 

@@ -106,6 +106,14 @@ def call_claude_with_retry(
     for attempt in range(max_retries + 1):
         try:
             return client.messages.create(**kwargs)
+        except anthropic.OverloadedError:
+            if attempt == max_retries:
+                raise
+            wait = delays[attempt]
+            print(
+                f"    API overloaded (529), retrying in {wait}s...", file=sys.stderr
+            )
+            time.sleep(wait)
         except anthropic.RateLimitError:
             if attempt == max_retries:
                 raise

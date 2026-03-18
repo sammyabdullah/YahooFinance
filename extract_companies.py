@@ -58,29 +58,50 @@ def fetch_page(source: str) -> tuple[str, str]:
         base_url = "file://" + os.path.abspath(source)
         return content, base_url
 
-    resp = requests.get(
-        source,
-        timeout=15,
-        headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            )
-        },
-    )
-    resp.raise_for_status()
-    html = resp.text
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/123.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+    }
 
-    # Detect JS-rendered pages: if very few links or little text, try Playwright
-    soup = BeautifulSoup(html, "lxml")
-    links = soup.find_all("a", href=True)
-    text = soup.get_text(strip=True)
-    if len(links) < 5 or len(text) < 500:
-        print("  Page appears JS-rendered, trying Playwright...", file=sys.stderr)
+    html = None
+    try:
+        resp = requests.get(source, timeout=15, headers=headers)
+        resp.raise_for_status()
+        html = resp.text
+    except Exception as e:
+        print(f"  requests failed ({e}), trying Playwright...", file=sys.stderr)
+
+    # Fall back to Playwright if requests failed or page looks JS-rendered
+    if html is None:
+        needs_playwright = True
+    else:
+        soup = BeautifulSoup(html, "lxml")
+        links = soup.find_all("a", href=True)
+        text = soup.get_text(strip=True)
+        needs_playwright = len(links) < 5 or len(text) < 500
+        if needs_playwright:
+            print("  Page appears JS-rendered, trying Playwright...", file=sys.stderr)
+
+    if needs_playwright:
         js_html = fetch_with_playwright(source)
         if js_html:
             html = js_html
+
+    if html is None:
+        raise RuntimeError(f"Could not fetch page: {source}")
 
     return html, source
 

@@ -306,6 +306,25 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       {% endfor %}
     </tbody>
     {% endif %}
+    {% if top30_profitable_stats %}
+    <tbody>
+      <tr class="stats-header"><td colspan="11">Top 30 Most Profitable Companies</td></tr>
+      {% for s in top30_profitable_stats %}
+      <tr class="stat-row">
+        <td colspan="2">{{ s.name }}</td>
+        <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
+        <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
+        <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
+        <td>{% if s.ebitda is not none %}${{ s.ebitda }}B{% else %}—{% endif %}</td>
+        <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
+        <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
+        <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
+        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
+        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endif %}
   </table>
   {% else %}
   <div class="empty-state">
@@ -386,6 +405,7 @@ def index():
 
     stats = []
     top30_stats = []
+    top30_profitable_stats = []
     if valid:
         all_agg, above_agg, _, n_above = summary_stats(raw_data)
         stats = [
@@ -404,6 +424,17 @@ def index():
             top30_stats = [
                 build_stat_row(f"Top {n30} Fastest Growing — Median", top30_agg, "median"),
                 build_stat_row(f"Top {n30} Fastest Growing — Average", top30_agg, "mean"),
+            ]
+        top30_profitable = sorted(
+            [d for d in valid if d.get("ebitda") is not None],
+            key=lambda d: d["ebitda"], reverse=True
+        )[:30]
+        if top30_profitable:
+            top30_prof_agg = _agg(top30_profitable)
+            n30p = len(top30_profitable)
+            top30_profitable_stats = [
+                build_stat_row(f"Top {n30p} Most Profitable — Median", top30_prof_agg, "median"),
+                build_stat_row(f"Top {n30p} Most Profitable — Average", top30_prof_agg, "mean"),
             ]
 
     if last_updated:
@@ -424,6 +455,7 @@ def index():
         rows=rows,
         stats=stats,
         top30_stats=top30_stats,
+        top30_profitable_stats=top30_profitable_stats,
         last_updated=last_updated_fmt,
         ticker_count=len(load_tickers()),
     )

@@ -426,8 +426,8 @@ def index():
                 build_stat_row(f"Top {n30} Fastest Growing — Average", top30_agg, "mean"),
             ]
         top30_profitable = sorted(
-            [d for d in valid if d.get("ebitda") is not None],
-            key=lambda d: d["ebitda"], reverse=True
+            [d for d in valid if d.get("ebitda") is not None and d.get("revenue")],
+            key=lambda d: d["ebitda"] / d["revenue"], reverse=True
         )[:30]
         if top30_profitable:
             top30_prof_agg = _agg(top30_profitable)

@@ -18,7 +18,7 @@ from flask import Flask, jsonify, render_template_string, request, Response
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # Reuse data logic from app.py
-from app import fetch_ticker_data, load_tickers, summary_stats, NUMERIC_KEYS
+from app import fetch_ticker_data, load_tickers, summary_stats, _agg, NUMERIC_KEYS
 
 app = Flask(__name__)
 
@@ -287,6 +287,25 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       {% endfor %}
     </tbody>
     {% endif %}
+    {% if top30_stats %}
+    <tbody>
+      <tr class="stats-header"><td colspan="11">Top 30 Fastest Growing Companies</td></tr>
+      {% for s in top30_stats %}
+      <tr class="stat-row">
+        <td colspan="2">{{ s.name }}</td>
+        <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
+        <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
+        <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
+        <td>{% if s.ebitda is not none %}${{ s.ebitda }}B{% else %}—{% endif %}</td>
+        <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
+        <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
+        <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
+        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
+        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endif %}
   </table>
   {% else %}
   <div class="empty-state">
@@ -366,6 +385,7 @@ def index():
     valid = [d for d in raw_data if not d.get("error")]
 
     stats = []
+    top30_stats = []
     if valid:
         all_agg, above_agg, _, n_above = summary_stats(raw_data)
         stats = [
@@ -374,6 +394,17 @@ def index():
             build_stat_row(f"Above Median Growth — Median (n={n_above})", above_agg, "median"),
             build_stat_row(f"Above Median Growth — Average (n={n_above})", above_agg, "mean"),
         ]
+        top30 = sorted(
+            [d for d in valid if d.get("rev_growth") is not None],
+            key=lambda d: d["rev_growth"], reverse=True
+        )[:30]
+        if top30:
+            top30_agg = _agg(top30)
+            n30 = len(top30)
+            top30_stats = [
+                build_stat_row(f"Top {n30} Fastest Growing — Median", top30_agg, "median"),
+                build_stat_row(f"Top {n30} Fastest Growing — Average", top30_agg, "mean"),
+            ]
 
     if last_updated:
         try:
@@ -392,6 +423,7 @@ def index():
         HTML_TEMPLATE,
         rows=rows,
         stats=stats,
+        top30_stats=top30_stats,
         last_updated=last_updated_fmt,
         ticker_count=len(load_tickers()),
     )

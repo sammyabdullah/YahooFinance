@@ -73,6 +73,7 @@ def build_row(d: dict) -> dict:
         "revenue": fmt_billions(d.get("revenue")),
         "rev_growth": fmt_pct(d.get("rev_growth")),
         "ebitda": fmt_billions(d.get("ebitda")),
+        "ebitda_margin": fmt_pct(d.get("ebitda_margin")),
         "ocf": fmt_billions(d.get("ocf")),
         "debt": fmt_billions(d.get("debt")),
         "cash": fmt_billions(d.get("cash")),
@@ -85,12 +86,14 @@ def build_row(d: dict) -> dict:
 def build_stat_row(label: str, agg: dict, stat: str) -> dict:
     rm = agg["rev_multiple"][stat]
     g = agg["rev_growth"][stat]
+    em = agg["ebitda_margin"][stat]
     return {
         "name": label,
         "market_cap": fmt_billions(agg["market_cap"][stat]),
         "revenue": fmt_billions(agg["revenue"][stat]),
         "rev_growth": fmt_pct(g),
         "ebitda": fmt_billions(agg["ebitda"][stat]),
+        "ebitda_margin": fmt_pct(em),
         "ocf": fmt_billions(agg["ocf"][stat]),
         "debt": fmt_billions(agg["debt"][stat]),
         "cash": fmt_billions(agg["cash"][stat]),
@@ -224,18 +227,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <th onclick="sortTable(3)" title="Last Twelve Months Revenue ($B)">LTM Rev</th>
         <th onclick="sortTable(4)" title="Year-over-Year Revenue Growth">Rev Growth</th>
         <th onclick="sortTable(5)" title="LTM EBITDA ($B)">LTM EBITDA</th>
-        <th onclick="sortTable(6)" title="LTM Operating Cash Flow ($B)">LTM Op CF</th>
-        <th onclick="sortTable(7)" title="Total Debt ($B)">Debt</th>
-        <th onclick="sortTable(8)" title="Total Cash ($B)">Cash</th>
-        <th onclick="sortTable(9)" title="Enterprise Value = Mkt Cap + Debt - Cash ($B)">Ent. Value</th>
-        <th onclick="sortTable(10)" title="Enterprise Value / LTM Revenue">Rev Mult.</th>
+        <th onclick="sortTable(6)" title="EBITDA / LTM Revenue">EBITDA Margin</th>
+        <th onclick="sortTable(7)" title="LTM Operating Cash Flow ($B)">LTM Op CF</th>
+        <th onclick="sortTable(8)" title="Total Debt ($B)">Debt</th>
+        <th onclick="sortTable(9)" title="Total Cash ($B)">Cash</th>
+        <th onclick="sortTable(10)" title="Enterprise Value = Mkt Cap + Debt - Cash ($B)">Ent. Value</th>
+        <th onclick="sortTable(11)" title="Enterprise Value / LTM Revenue">Rev Mult.</th>
       </tr>
     </thead>
     <tbody id="ticker-rows">
       {% for row in rows %}
         {% if row.error %}
         <tr class="error-row">
-          <td colspan="11">Error ({{ row.ticker }}): {{ row.error[:80] }}</td>
+          <td colspan="12">Error ({{ row.ticker }}): {{ row.error[:80] }}</td>
         </tr>
         {% else %}
         <tr
@@ -243,6 +247,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           data-revenue="{{ row.revenue if row.revenue is not none else '' }}"
           data-rev-growth="{{ row.rev_growth if row.rev_growth is not none else '' }}"
           data-ebitda="{{ row.ebitda if row.ebitda is not none else '' }}"
+          data-ebitda-margin="{{ row.ebitda_margin if row.ebitda_margin is not none else '' }}"
           data-ocf="{{ row.ocf if row.ocf is not none else '' }}"
           data-debt="{{ row.debt if row.debt is not none else '' }}"
           data-cash="{{ row.cash if row.cash is not none else '' }}"
@@ -259,6 +264,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             {% else %}<span class="val-null">—</span>{% endif %}
           </td>
           <td>{% if row.ebitda is not none %}<span class="{{ 'val-pos' if row.ebitda >= 0 else 'val-neg' }}">${{ row.ebitda }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+          <td>
+            {% if row.ebitda_margin is not none %}
+              <span class="{{ 'val-pos' if row.ebitda_margin >= 0 else 'val-neg' }}">{{ '+' if row.ebitda_margin >= 0 else '' }}{{ row.ebitda_margin }}%</span>
+            {% else %}<span class="val-null">—</span>{% endif %}
+          </td>
           <td>{% if row.ocf is not none %}<span class="{{ 'val-pos' if row.ocf >= 0 else 'val-neg' }}">${{ row.ocf }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
           <td>{% if row.debt is not none %}<span class="val-debt">${{ row.debt }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
           <td>{% if row.cash is not none %}<span class="val-cash">${{ row.cash }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
@@ -270,7 +280,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     </tbody>
     {% if stats %}
     <tbody>
-      <tr class="stats-header"><td colspan="11">Summary Statistics</td></tr>
+      <tr class="stats-header"><td colspan="12">Summary Statistics</td></tr>
       {% for s in stats %}
       <tr class="stat-row">
         <td colspan="2">{{ s.name }}</td>
@@ -278,6 +288,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
         <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
         <td>{% if s.ebitda is not none %}${{ s.ebitda }}B{% else %}—{% endif %}</td>
+        <td>{% if s.ebitda_margin is not none %}{{ '+' if s.ebitda_margin >= 0 else '' }}{{ s.ebitda_margin }}%{% else %}—{% endif %}</td>
         <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
         <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
@@ -289,7 +300,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     {% endif %}
     {% if top30_stats %}
     <tbody>
-      <tr class="stats-header"><td colspan="11">Top 30 Fastest Growing Companies</td></tr>
+      <tr class="stats-header"><td colspan="12">Top 30 Fastest Growing Companies</td></tr>
       {% for s in top30_stats %}
       <tr class="stat-row">
         <td colspan="2">{{ s.name }}</td>
@@ -297,6 +308,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
         <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
         <td>{% if s.ebitda is not none %}${{ s.ebitda }}B{% else %}—{% endif %}</td>
+        <td>{% if s.ebitda_margin is not none %}{{ '+' if s.ebitda_margin >= 0 else '' }}{{ s.ebitda_margin }}%{% else %}—{% endif %}</td>
         <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
         <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
@@ -308,7 +320,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     {% endif %}
     {% if top30_profitable_stats %}
     <tbody>
-      <tr class="stats-header"><td colspan="11">Top 30 Most Profitable Companies</td></tr>
+      <tr class="stats-header"><td colspan="12">Top 30 Most Profitable Companies</td></tr>
       {% for s in top30_profitable_stats %}
       <tr class="stat-row">
         <td colspan="2">{{ s.name }}</td>
@@ -316,6 +328,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
         <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
         <td>{% if s.ebitda is not none %}${{ s.ebitda }}B{% else %}—{% endif %}</td>
+        <td>{% if s.ebitda_margin is not none %}{{ '+' if s.ebitda_margin >= 0 else '' }}{{ s.ebitda_margin }}%{% else %}—{% endif %}</td>
         <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
         <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
@@ -335,7 +348,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 <script>
   let sortCol = -1, sortAsc = true;
-  const dataAttrs = [null, null, "market-cap", "revenue", "rev-growth", "ebitda", "ocf", "debt", "cash", "ev", "rev-multiple"];
+  const dataAttrs = [null, null, "market-cap", "revenue", "rev-growth", "ebitda", "ebitda-margin", "ocf", "debt", "cash", "ev", "rev-multiple"];
 
   function sortTable(col) {
     const tbody = document.getElementById("ticker-rows");
@@ -491,7 +504,7 @@ def export_csv():
     writer.writerow([
         "Company", "Ticker",
         "Market Cap ($B)", "LTM Revenue ($B)", "Rev Growth (%)",
-        "LTM EBITDA ($B)", "LTM Op CF ($B)",
+        "LTM EBITDA ($B)", "EBITDA Margin (%)", "LTM Op CF ($B)",
         "Debt ($B)", "Cash ($B)", "Enterprise Value ($B)", "Rev Multiple (x)",
         "As Of",
     ])
@@ -507,6 +520,7 @@ def export_csv():
             fmt_billions(d.get("revenue")),
             fmt_pct(d.get("rev_growth")),
             fmt_billions(d.get("ebitda")),
+            fmt_pct(d.get("ebitda_margin")),
             fmt_billions(d.get("ocf")),
             fmt_billions(d.get("debt")),
             fmt_billions(d.get("cash")),

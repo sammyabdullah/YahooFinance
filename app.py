@@ -112,6 +112,9 @@ def fetch_ticker_data(ticker: str) -> dict:
         # Revenue Multiple = EV / LTM Revenue
         rev_multiple = (ev / revenue) if (ev is not None and revenue) else None
 
+        # EBITDA Margin = EBITDA / Revenue
+        ebitda_margin = (ebitda / revenue) if (ebitda is not None and revenue) else None
+
         return {
             "ticker": ticker.upper(),
             "name": name,
@@ -119,6 +122,7 @@ def fetch_ticker_data(ticker: str) -> dict:
             "revenue": revenue,
             "rev_growth": rev_growth,
             "ebitda": ebitda,
+            "ebitda_margin": ebitda_margin,
             "ocf": ocf,
             "debt": debt,
             "cash": cash,
@@ -140,7 +144,7 @@ def fetch_all(tickers: list[str]) -> list[dict]:
 
 # ── Summary stats ─────────────────────────────────────────────────────────────
 
-NUMERIC_KEYS = ["market_cap", "revenue", "rev_growth", "ebitda", "ocf", "debt", "cash", "ev", "rev_multiple"]
+NUMERIC_KEYS = ["market_cap", "revenue", "rev_growth", "ebitda", "ebitda_margin", "ocf", "debt", "cash", "ev", "rev_multiple"]
 
 
 def _agg(subset: list[dict]) -> dict:
@@ -182,24 +186,25 @@ def render_table(data: list[dict]) -> None:
         title_justify="left",
     )
 
-    table.add_column("Company",     style="white",       max_width=28)
-    table.add_column("Ticker",      style="bold cyan",   no_wrap=True)
-    table.add_column("Mkt Cap",     justify="right",     style="green")
-    table.add_column("LTM Rev",     justify="right",     style="green")
-    table.add_column("Rev Growth",  justify="right",     style="yellow")
-    table.add_column("LTM EBITDA",  justify="right",     style="green")
-    table.add_column("LTM Op CF",   justify="right",     style="green")
-    table.add_column("Debt",        justify="right",     style="red")
-    table.add_column("Cash",        justify="right",     style="bright_green")
-    table.add_column("Ent. Value",  justify="right",     style="green")
-    table.add_column("Rev Mult.",   justify="right",     style="magenta")
+    table.add_column("Company",       style="white",       max_width=28)
+    table.add_column("Ticker",        style="bold cyan",   no_wrap=True)
+    table.add_column("Mkt Cap",       justify="right",     style="green")
+    table.add_column("LTM Rev",       justify="right",     style="green")
+    table.add_column("Rev Growth",    justify="right",     style="yellow")
+    table.add_column("LTM EBITDA",    justify="right",     style="green")
+    table.add_column("EBITDA Margin", justify="right",     style="yellow")
+    table.add_column("LTM Op CF",     justify="right",     style="green")
+    table.add_column("Debt",          justify="right",     style="red")
+    table.add_column("Cash",          justify="right",     style="bright_green")
+    table.add_column("Ent. Value",    justify="right",     style="green")
+    table.add_column("Rev Mult.",     justify="right",     style="magenta")
 
     for i, d in enumerate(data):
         last = (i == len(data) - 1)
         if d.get("error"):
             table.add_row(
                 f"[red]Error: {d['error'][:40]}[/]", d["ticker"],
-                "—", "—", "—", "—", "—", "—", "—", "—", "—",
+                "—", "—", "—", "—", "—", "—", "—", "—", "—", "—",
                 end_section=last,
             )
         else:
@@ -210,6 +215,7 @@ def render_table(data: list[dict]) -> None:
                 fmt(d["revenue"]),
                 fmt_pct(d.get("rev_growth")),
                 fmt(d["ebitda"]),
+                fmt_pct(d.get("ebitda_margin")),
                 fmt(d["ocf"]),
                 fmt(d["debt"]),
                 fmt(d["cash"]),
@@ -224,6 +230,7 @@ def render_table(data: list[dict]) -> None:
 
         def stat_row(label: str, agg: dict, stat: str) -> list:
             g = agg["rev_growth"][stat]
+            em = agg["ebitda_margin"][stat]
             rm = agg["rev_multiple"][stat]
             return [
                 f"[dim italic]{label}[/]", "",
@@ -231,6 +238,7 @@ def render_table(data: list[dict]) -> None:
                 fmt(agg["revenue"][stat]),
                 fmt_pct(g) if g is not None else "—",
                 fmt(agg["ebitda"][stat]),
+                fmt_pct(em) if em is not None else "—",
                 fmt(agg["ocf"][stat]),
                 fmt(agg["debt"][stat]),
                 fmt(agg["cash"][stat]),
@@ -253,7 +261,7 @@ def export_csv(data: list[dict], path: Path) -> None:
     fields = [
         "Company", "Ticker",
         "Market Cap ($)", "LTM Revenue ($)", "Rev Growth (YoY)",
-        "LTM EBITDA ($)", "LTM Op Cash Flow ($)", "Total Debt ($)", "Cash ($)",
+        "LTM EBITDA ($)", "EBITDA Margin (%)", "LTM Op Cash Flow ($)", "Total Debt ($)", "Cash ($)",
         "Enterprise Value ($)", "Revenue Multiple",
         "As of",
     ]
@@ -290,6 +298,7 @@ def export_csv(data: list[dict], path: Path) -> None:
                     "LTM Revenue ($)": raw(d["revenue"]),
                     "Rev Growth (YoY)": pct(d.get("rev_growth")),
                     "LTM EBITDA ($)": raw(d["ebitda"]),
+                    "EBITDA Margin (%)": pct(d.get("ebitda_margin")),
                     "LTM Op Cash Flow ($)": raw(d["ocf"]),
                     "Total Debt ($)": raw(d["debt"]),
                     "Cash ($)": raw(d["cash"]),
@@ -311,6 +320,7 @@ def export_csv(data: list[dict], path: Path) -> None:
                     "LTM Revenue ($)": raw(agg["revenue"][stat]),
                     "Rev Growth (YoY)": pct(agg["rev_growth"][stat]),
                     "LTM EBITDA ($)": raw(agg["ebitda"][stat]),
+                    "EBITDA Margin (%)": pct(agg["ebitda_margin"][stat]),
                     "LTM Op Cash Flow ($)": raw(agg["ocf"][stat]),
                     "Total Debt ($)": raw(agg["debt"][stat]),
                     "Cash ($)": raw(agg["cash"][stat]),

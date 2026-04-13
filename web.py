@@ -298,6 +298,26 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       {% endfor %}
     </tbody>
     {% endif %}
+    {% if above_stats %}
+    <tbody>
+      <tr class="stats-header"><td colspan="12">Above Median Growth Companies</td></tr>
+      {% for s in above_stats %}
+      <tr class="stat-row">
+        <td colspan="2">{{ s.name }}</td>
+        <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
+        <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
+        <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
+        <td>{% if s.ebitda is not none %}${{ s.ebitda }}B{% else %}—{% endif %}</td>
+        <td>{% if s.ebitda_margin is not none %}{{ '+' if s.ebitda_margin >= 0 else '' }}{{ s.ebitda_margin }}%{% else %}—{% endif %}</td>
+        <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
+        <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
+        <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
+        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
+        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endif %}
     {% if top30_stats %}
     <tbody>
       <tr class="stats-header"><td colspan="12">Top 30 Fastest Growing Companies</td></tr>
@@ -417,6 +437,7 @@ def index():
     valid = [d for d in raw_data if not d.get("error")]
 
     stats = []
+    above_stats = []
     top30_stats = []
     top30_profitable_stats = []
     if valid:
@@ -424,6 +445,8 @@ def index():
         stats = [
             build_stat_row("All — Median", all_agg, "median"),
             build_stat_row("All — Average", all_agg, "mean"),
+        ]
+        above_stats = [
             build_stat_row(f"Above Median Growth — Median (n={n_above})", above_agg, "median"),
             build_stat_row(f"Above Median Growth — Average (n={n_above})", above_agg, "mean"),
         ]
@@ -467,6 +490,7 @@ def index():
         HTML_TEMPLATE,
         rows=rows,
         stats=stats,
+        above_stats=above_stats,
         top30_stats=top30_stats,
         top30_profitable_stats=top30_profitable_stats,
         last_updated=last_updated_fmt,

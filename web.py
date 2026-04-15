@@ -157,9 +157,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     .table-wrap { overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 120px); border-radius: 10px; border: 1px solid #21262d; }
     .table-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
     .table-wrap::-webkit-scrollbar-track { background: #0d1117; }
-    .table-wrap::-webkit-scrollbar-thumb { background: #21262d; border-radius: 4px; }
-    .table-wrap::-webkit-scrollbar-thumb:hover { background: #30363d; }
-    .table-wrap { scrollbar-color: #21262d #0d1117; scrollbar-width: thin; }
+    .table-wrap::-webkit-scrollbar-thumb { background: #58a6ff; border-radius: 4px; }
+    .table-wrap::-webkit-scrollbar-thumb:hover { background: #79b8ff; }
+    .table-wrap { scrollbar-color: #58a6ff #0d1117; scrollbar-width: thin; }
     table { width: 100%; border-collapse: collapse; font-size: 0.85rem; white-space: nowrap; }
     thead th {
       background: #161b22; color: #8b949e; font-weight: 600; font-size: 0.75rem;

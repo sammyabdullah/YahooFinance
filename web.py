@@ -160,6 +160,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       background: #161b22; color: #8b949e; font-weight: 600; font-size: 0.75rem;
       text-transform: uppercase; letter-spacing: 0.04em; padding: 10px 14px;
       text-align: right; border-bottom: 1px solid #21262d; cursor: pointer; user-select: none;
+      position: sticky; top: 0; z-index: 1;
     }
     thead th:first-child, thead th:nth-child(2) { text-align: left; }
     thead th:hover { color: #58a6ff; }

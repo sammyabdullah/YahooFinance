@@ -230,16 +230,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <tr>
         <th onclick="sortTable(0)">Company</th>
         <th onclick="sortTable(1)">Ticker</th>
-        <th onclick="sortTable(2)" title="Market Capitalization ($B)">Mkt Cap</th>
-        <th onclick="sortTable(3)" title="Last Twelve Months Revenue ($B)">LTM Rev</th>
-        <th onclick="sortTable(4)" title="Year-over-Year Revenue Growth">Rev Growth</th>
-        <th onclick="sortTable(5)" title="LTM EBITDA ($B)">LTM EBITDA</th>
-        <th onclick="sortTable(6)" title="EBITDA / LTM Revenue">EBITDA Margin</th>
-        <th onclick="sortTable(7)" title="LTM Operating Cash Flow ($B)">LTM Op CF</th>
-        <th onclick="sortTable(8)" title="Total Debt ($B)">Debt</th>
-        <th onclick="sortTable(9)" title="Total Cash ($B)">Cash</th>
-        <th onclick="sortTable(10)" title="Enterprise Value = Mkt Cap + Debt - Cash ($B)">Ent. Value</th>
-        <th onclick="sortTable(11)" title="Enterprise Value / LTM Revenue">Rev Mult.</th>
+        <th onclick="sortTable(2)" title="Enterprise Value / LTM Revenue">Rev Mult.</th>
+        <th onclick="sortTable(3)" title="Enterprise Value = Mkt Cap + Debt - Cash ($B)">Ent. Value</th>
+        <th onclick="sortTable(4)" title="Market Capitalization ($B)">Mkt Cap</th>
+        <th onclick="sortTable(5)" title="Last Twelve Months Revenue ($B)">LTM Rev</th>
+        <th onclick="sortTable(6)" title="Year-over-Year Revenue Growth">Rev Growth</th>
+        <th onclick="sortTable(7)" title="LTM EBITDA ($B)">LTM EBITDA</th>
+        <th onclick="sortTable(8)" title="EBITDA / LTM Revenue">EBITDA Margin</th>
+        <th onclick="sortTable(9)" title="LTM Operating Cash Flow ($B)">LTM Op CF</th>
+        <th onclick="sortTable(10)" title="Total Debt ($B)">Debt</th>
+        <th onclick="sortTable(11)" title="Total Cash ($B)">Cash</th>
       </tr>
     </thead>
     <tbody id="ticker-rows">
@@ -263,6 +263,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         >
           <td>{{ row.name }}</td>
           <td>{{ row.ticker }}</td>
+          <td>{% if row.rev_multiple is not none %}<span class="val-mult">{{ row.rev_multiple }}x</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+          <td>{% if row.ev is not none %}<span class="val-ev">${{ row.ev }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
           <td>{% if row.market_cap is not none %}<span class="val-pos">${{ row.market_cap }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
           <td>{% if row.revenue is not none %}<span class="val-pos">${{ row.revenue }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
           <td>
@@ -279,8 +281,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
           <td>{% if row.ocf is not none %}<span class="{{ 'val-pos' if row.ocf >= 0 else 'val-neg' }}">${{ row.ocf }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
           <td>{% if row.debt is not none %}<span class="val-debt">${{ row.debt }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
           <td>{% if row.cash is not none %}<span class="val-cash">${{ row.cash }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-          <td>{% if row.ev is not none %}<span class="val-ev">${{ row.ev }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-          <td>{% if row.rev_multiple is not none %}<span class="val-mult">{{ row.rev_multiple }}x</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
         </tr>
         {% endif %}
       {% endfor %}
@@ -291,6 +291,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       {% for s in stats %}
       <tr class="stat-row">
         <td colspan="2">{{ s.name }}</td>
+        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
+        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
         <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
         <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
         <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
@@ -299,8 +301,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
         <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
-        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
-        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -311,6 +311,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       {% for s in above_stats %}
       <tr class="stat-row">
         <td colspan="2">{{ s.name }}</td>
+        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
+        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
         <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
         <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
         <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
@@ -319,8 +321,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
         <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
-        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
-        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -331,6 +331,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       {% for s in top30_stats %}
       <tr class="stat-row">
         <td colspan="2">{{ s.name }}</td>
+        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
+        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
         <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
         <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
         <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
@@ -339,8 +341,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
         <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
-        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
-        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -351,6 +351,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       {% for s in top30_profitable_stats %}
       <tr class="stat-row">
         <td colspan="2">{{ s.name }}</td>
+        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
+        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
         <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
         <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
         <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
@@ -359,8 +361,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
         <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
-        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
-        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -375,7 +375,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 <script>
   let sortCol = -1, sortAsc = true;
-  const dataAttrs = [null, null, "market-cap", "revenue", "rev-growth", "ebitda", "ebitda-margin", "ocf", "debt", "cash", "ev", "rev-multiple"];
+  const dataAttrs = [null, null, "rev-multiple", "ev", "market-cap", "revenue", "rev-growth", "ebitda", "ebitda-margin", "ocf", "debt", "cash"];
 
   function sortTable(col) {
     const tbody = document.getElementById("ticker-rows");

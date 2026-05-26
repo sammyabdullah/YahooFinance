@@ -104,6 +104,76 @@ def build_stat_row(label: str, agg: dict, stat: str) -> dict:
 
 # ── Refresh logic ─────────────────────────────────────────────────────────────
 
+HISTORY_FILE = Path("history.csv")
+HISTORY_HEADERS = [
+    "Date", "Section", "Type",
+    "Rev Multiple (x)", "Enterprise Value ($B)", "Market Cap ($B)",
+    "LTM Revenue ($B)", "Rev Growth (%)", "LTM EBITDA ($B)",
+    "EBITDA Margin (%)", "LTM Op CF ($B)", "Debt ($B)", "Cash ($B)",
+]
+
+
+def _fmt_h(value, scale=1.0) -> str:
+    """Format a raw value for history CSV (already scaled by build_stat_row)."""
+    if value is None:
+        return ""
+    try:
+        return str(round(float(value) * scale, 2))
+    except (TypeError, ValueError):
+        return ""
+
+
+def append_history(data: list[dict]) -> None:
+    """Append today's summary stats to history.csv."""
+    valid = [d for d in data if not d.get("error")]
+    if not valid:
+        return
+
+    all_agg, above_agg, _, n_above = summary_stats(data)
+    top30 = sorted(
+        [d for d in valid if d.get("rev_growth") is not None],
+        key=lambda d: d["rev_growth"], reverse=True
+    )[:30]
+    top30_profitable = sorted(
+        [d for d in valid if d.get("ebitda") is not None and d.get("revenue")],
+        key=lambda d: d["ebitda"] / d["revenue"], reverse=True
+    )[:30]
+
+    sections = [
+        ("All Companies", all_agg),
+        ("Above Median Growth", above_agg),
+        ("Top 30 Fastest Growing", _agg(top30) if top30 else None),
+        ("Top 30 Most Profitable", _agg(top30_profitable) if top30_profitable else None),
+    ]
+
+    date_str = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    write_header = not HISTORY_FILE.exists()
+
+    with open(HISTORY_FILE, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(HISTORY_HEADERS)
+        for section_name, agg in sections:
+            if agg is None:
+                continue
+            for stat_type in ("Median", "Average"):
+                stat = "median" if stat_type == "Median" else "mean"
+                writer.writerow([
+                    date_str, section_name, stat_type,
+                    _fmt_h(agg["rev_multiple"][stat]),
+                    _fmt_h(agg["ev"][stat], 1/1e9),
+                    _fmt_h(agg["market_cap"][stat], 1/1e9),
+                    _fmt_h(agg["revenue"][stat], 1/1e9),
+                    _fmt_h(agg["rev_growth"][stat], 100),
+                    _fmt_h(agg["ebitda"][stat], 1/1e9),
+                    _fmt_h(agg["ebitda_margin"][stat], 100),
+                    _fmt_h(agg["ocf"][stat], 1/1e9),
+                    _fmt_h(agg["debt"][stat], 1/1e9),
+                    _fmt_h(agg["cash"][stat], 1/1e9),
+                ])
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] History recorded for {date_str}.")
+
+
 def refresh_data() -> None:
     """Fetch fresh data for all tickers and update the cache."""
     global _cache
@@ -116,6 +186,14 @@ def refresh_data() -> None:
         _cache = {"data": data, "last_updated": datetime.now(timezone.utc).isoformat()}
     save_cache()
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Refresh complete.")
+
+
+def scheduled_refresh() -> None:
+    """Daily 4:30 PM refresh — fetches data then appends summary to history."""
+    refresh_data()
+    with _lock:
+        data = list(_cache.get("data", []))
+    append_history(data)
 
 
 # ── HTML template (embedded so no separate templates/ folder is needed) ───────
@@ -568,6 +646,18 @@ def export_csv():
     )
 
 
+@app.route("/history.csv")
+def download_history():
+    """Download the full historical summary stats CSV."""
+    if not HISTORY_FILE.exists():
+        return Response("No history recorded yet.", mimetype="text/plain", status=404)
+    return Response(
+        HISTORY_FILE.read_bytes(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=saas-multiples-history.csv"},
+    )
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 # Runs at import time so both `python web.py` and `gunicorn web:app` initialize.
 
@@ -576,7 +666,7 @@ if not _cache.get("data"):
     threading.Thread(target=refresh_data, daemon=True).start()
 
 scheduler = BackgroundScheduler()
-scheduler.add_job(refresh_data, "cron", hour=16, minute=30, id="daily_refresh", timezone="America/New_York")
+scheduler.add_job(scheduled_refresh, "cron", hour=16, minute=30, id="daily_refresh", timezone="America/New_York")
 scheduler.start()
 
 if __name__ == "__main__":

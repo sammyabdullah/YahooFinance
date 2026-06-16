@@ -384,7 +384,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
-      <tr class="chart-row"><td colspan="12"><div style="height:280px;position:relative;"><canvas id="chart-all"></canvas></div></td></tr>
+      <tr class="chart-row"><td colspan="12"><div style="height:560px;position:relative;"><canvas id="chart-all"></canvas></div></td></tr>
     </tbody>
     {% endif %}
     {% if above_stats %}
@@ -405,7 +405,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
-      <tr class="chart-row"><td colspan="12"><div style="height:280px;position:relative;"><canvas id="chart-above"></canvas></div></td></tr>
+      <tr class="chart-row"><td colspan="12"><div style="height:560px;position:relative;"><canvas id="chart-above"></canvas></div></td></tr>
     </tbody>
     {% endif %}
     {% if top30_stats %}
@@ -426,7 +426,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
-      <tr class="chart-row"><td colspan="12"><div style="height:280px;position:relative;"><canvas id="chart-top30grow"></canvas></div></td></tr>
+      <tr class="chart-row"><td colspan="12"><div style="height:560px;position:relative;"><canvas id="chart-top30grow"></canvas></div></td></tr>
     </tbody>
     {% endif %}
     {% if top30_profitable_stats %}
@@ -447,7 +447,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
-      <tr class="chart-row"><td colspan="12"><div style="height:280px;position:relative;"><canvas id="chart-top30prof"></canvas></div></td></tr>
+      <tr class="chart-row"><td colspan="12"><div style="height:560px;position:relative;"><canvas id="chart-top30prof"></canvas></div></td></tr>
     </tbody>
     {% endif %}
   </table>

@@ -275,7 +275,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     .empty-state { text-align: center; padding: 60px 20px; color: #8b949e; }
     .empty-state p { margin-bottom: 8px; }
     .chart-row td { background: #0d1117; padding: 16px 20px 20px; border-top: none; }
-    .chart-placeholder { color: #484f58; font-size: 0.78rem; font-style: italic; text-align: center; padding: 12px 0; }
+    .chart-placeholder { color: #484f58; font-size: 0.78rem; font-style: italic; text-align: center; padding: 40px 0; border: 1px dashed #21262d; border-radius: 6px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .spin { animation: spin 1s linear infinite; display: inline-block; }
   </style>
@@ -531,18 +531,30 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
   };
 
+  function showPlaceholder(id) {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    const wrap = canvas.parentElement;
+    wrap.style.height = "auto";
+    canvas.style.display = "none";
+    const p = document.createElement("div");
+    p.className = "chart-placeholder";
+    p.textContent = "Revenue Multiple chart — data will appear after the 4:30 PM ET refresh";
+    wrap.appendChild(p);
+  }
+
   async function renderCharts() {
     let rows;
     try { rows = await fetch("/api/history").then(r => r.json()); }
-    catch(e) { return; }
-    if (!rows.length) return;
+    catch(e) { CHART_DEFS.forEach(c => showPlaceholder(c.id)); return; }
+    if (!rows.length) { CHART_DEFS.forEach(c => showPlaceholder(c.id)); return; }
 
     for (const { id, section } of CHART_DEFS) {
       const canvas = document.getElementById(id);
       if (!canvas) continue;
       const sRows = rows.filter(r => r.Section === section);
       const dates = [...new Set(sRows.map(r => r.Date))].sort();
-      if (!dates.length) continue;
+      if (!dates.length) { showPlaceholder(id); continue; }
 
       const get = (date, type, col) => {
         const r = sRows.find(r => r.Date === date && r.Type === type);

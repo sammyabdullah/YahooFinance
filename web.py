@@ -205,6 +205,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SaaS Multiples Index</title>
   <link rel="icon" type="image/png" href="/static/favicon.png" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -273,6 +274,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     .error-row td { color: #f85149; font-size: 0.82rem; }
     .empty-state { text-align: center; padding: 60px 20px; color: #8b949e; }
     .empty-state p { margin-bottom: 8px; }
+    .chart-row td { background: #0d1117; padding: 16px 20px 20px; border-top: none; }
+    .chart-placeholder { color: #484f58; font-size: 0.78rem; font-style: italic; text-align: center; padding: 12px 0; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .spin { animation: spin 1s linear infinite; display: inline-block; }
   </style>
@@ -381,6 +384,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
+      <tr class="chart-row"><td colspan="12"><div style="height:140px;position:relative;"><canvas id="chart-all"></canvas></div></td></tr>
     </tbody>
     {% endif %}
     {% if above_stats %}
@@ -401,6 +405,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
+      <tr class="chart-row"><td colspan="12"><div style="height:140px;position:relative;"><canvas id="chart-above"></canvas></div></td></tr>
     </tbody>
     {% endif %}
     {% if top30_stats %}
@@ -421,6 +426,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
+      <tr class="chart-row"><td colspan="12"><div style="height:140px;position:relative;"><canvas id="chart-top30grow"></canvas></div></td></tr>
     </tbody>
     {% endif %}
     {% if top30_profitable_stats %}
@@ -441,6 +447,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
+      <tr class="chart-row"><td colspan="12"><div style="height:140px;position:relative;"><canvas id="chart-top30prof"></canvas></div></td></tr>
     </tbody>
     {% endif %}
   </table>
@@ -504,6 +511,63 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }, 3000);
     setTimeout(() => clearInterval(interval), 180000);
   }
+
+  const CHART_DEFS = [
+    { id: "chart-all",       section: "All Companies" },
+    { id: "chart-above",     section: "Above Median Growth" },
+    { id: "chart-top30grow", section: "Top 30 Fastest Growing" },
+    { id: "chart-top30prof", section: "Top 30 Most Profitable" },
+  ];
+  const chartInstances = {};
+  const CHART_DEFAULTS = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { color: "#8b949e", font: { size: 11 }, boxWidth: 12 } },
+      tooltip: { callbacks: { label: ctx => " " + ctx.dataset.label + ": " + ctx.parsed.y + "x" } }
+    },
+    scales: {
+      x: { ticks: { color: "#8b949e", font: { size: 10 }, maxRotation: 0 }, grid: { color: "#21262d" } },
+      y: { ticks: { color: "#8b949e", font: { size: 10 }, callback: v => v + "x" }, grid: { color: "#21262d" } }
+    }
+  };
+
+  async function renderCharts() {
+    let rows;
+    try { rows = await fetch("/api/history").then(r => r.json()); }
+    catch(e) { return; }
+    if (!rows.length) return;
+
+    for (const { id, section } of CHART_DEFS) {
+      const canvas = document.getElementById(id);
+      if (!canvas) continue;
+      const sRows = rows.filter(r => r.Section === section);
+      const dates = [...new Set(sRows.map(r => r.Date))].sort();
+      if (!dates.length) continue;
+
+      const get = (date, type, col) => {
+        const r = sRows.find(r => r.Date === date && r.Type === type);
+        return r ? (parseFloat(r[col]) || null) : null;
+      };
+
+      const medians = dates.map(d => get(d, "Median", "Rev Multiple (x)"));
+      const avgs    = dates.map(d => get(d, "Average", "Rev Multiple (x)"));
+
+      if (chartInstances[id]) chartInstances[id].destroy();
+      chartInstances[id] = new Chart(canvas, {
+        type: "line",
+        data: {
+          labels: dates,
+          datasets: [
+            { label: "Median", data: medians, borderColor: "#58a6ff", backgroundColor: "rgba(88,166,255,0.08)", fill: true,  tension: 0.3, pointRadius: 3 },
+            { label: "Average", data: avgs,   borderColor: "#d2a8ff", backgroundColor: "transparent",           fill: false, tension: 0.3, pointRadius: 3 },
+          ]
+        },
+        options: { ...CHART_DEFAULTS, plugins: { ...CHART_DEFAULTS.plugins, title: { display: true, text: "Revenue Multiple (x)", color: "#8b949e", font: { size: 11 } } } }
+      });
+    }
+  }
+
+  renderCharts();
 
 </script>
 </body>
@@ -644,6 +708,18 @@ def export_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=saas-multiples.csv"},
     )
+
+
+@app.route("/api/history")
+def api_history():
+    """Return historical summary stats as JSON for charting."""
+    if not HISTORY_FILE.exists():
+        return jsonify([])
+    rows = []
+    with open(HISTORY_FILE, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            rows.append(dict(row))
+    return jsonify(rows)
 
 
 @app.route("/history.csv")

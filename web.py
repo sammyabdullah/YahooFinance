@@ -569,7 +569,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             { label: "Average", data: avgs,   borderColor: "#d2a8ff", backgroundColor: "transparent",           fill: false, tension: 0.3, pointRadius: 3 },
           ]
         },
-        options: { ...CHART_DEFAULTS, plugins: { ...CHART_DEFAULTS.plugins, title: { display: true, text: "Revenue Multiple (x)", color: "#8b949e", font: { size: 11 } } } }
+        options: CHART_DEFAULTS
       });
     }
   }

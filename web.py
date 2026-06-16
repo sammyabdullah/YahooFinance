@@ -534,13 +534,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   function showPlaceholder(id) {
     const canvas = document.getElementById(id);
     if (!canvas) return;
-    const wrap = canvas.parentElement;
-    wrap.style.height = "auto";
-    canvas.style.display = "none";
-    const p = document.createElement("div");
-    p.className = "chart-placeholder";
-    p.textContent = "Revenue Multiple chart — data will appear after the 4:30 PM ET refresh";
-    wrap.appendChild(p);
+    const row = canvas.closest("tr");
+    if (row) row.style.display = "none";
   }
 
   async function renderCharts() {

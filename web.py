@@ -234,7 +234,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     #refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     #refresh-btn svg { width: 14px; height: 14px; }
     #refresh-status { font-size: 0.78rem; color: #8b949e; }
-    .table-wrap { overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 120px); border-radius: 10px; border: 1px solid #21262d; }
+    .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid #21262d; }
     .table-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
     .table-wrap::-webkit-scrollbar-track { background: #0d1117; }
     .table-wrap::-webkit-scrollbar-thumb { background: #58a6ff; border-radius: 4px; }
@@ -245,7 +245,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       background: #161b22; color: #8b949e; font-weight: 600; font-size: 0.75rem;
       text-transform: uppercase; letter-spacing: 0.04em; padding: 10px 14px;
       text-align: right; border-bottom: 1px solid #21262d; cursor: pointer; user-select: none;
-      position: sticky; top: 0; z-index: 1;
     }
     thead th:first-child, thead th:nth-child(2) { text-align: left; }
     thead th:hover { color: #58a6ff; }
@@ -274,6 +273,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     .error-row td { color: #f85149; font-size: 0.82rem; }
     .empty-state { text-align: center; padding: 60px 20px; color: #8b949e; }
     .empty-state p { margin-bottom: 8px; }
+    .section-cols td {
+      background: #161b22; color: #8b949e; font-weight: 600; font-size: 0.75rem;
+      text-transform: uppercase; letter-spacing: 0.04em; padding: 10px 14px;
+      text-align: right; border-bottom: 1px solid #21262d;
+    }
+    .section-cols td:first-child, .section-cols td:nth-child(2) { text-align: left; }
     .chart-row td { background: #0d1117; padding: 16px 20px 20px; border-top: none; }
     .chart-placeholder { color: #484f58; font-size: 0.78rem; font-style: italic; text-align: center; padding: 40px 0; border: 1px dashed #21262d; border-radius: 6px; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -369,6 +374,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     {% if stats %}
     <tbody>
       <tr class="stats-header"><td colspan="12">Summary Statistics</td></tr>
+      <tr class="section-cols"><td></td><td></td><td>Rev Mult.</td><td>Ent. Value</td><td>Mkt Cap</td><td>LTM Rev</td><td>Rev Growth</td><td>LTM EBITDA</td><td>EBITDA Margin</td><td>LTM Op CF</td><td>Debt</td><td>Cash</td></tr>
       {% for s in stats %}
       <tr class="stat-row">
         <td colspan="2">{{ s.name }}</td>
@@ -390,6 +396,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     {% if above_stats %}
     <tbody>
       <tr class="stats-header"><td colspan="12">Above Median Growth Companies</td></tr>
+      <tr class="section-cols"><td></td><td></td><td>Rev Mult.</td><td>Ent. Value</td><td>Mkt Cap</td><td>LTM Rev</td><td>Rev Growth</td><td>LTM EBITDA</td><td>EBITDA Margin</td><td>LTM Op CF</td><td>Debt</td><td>Cash</td></tr>
       {% for s in above_stats %}
       <tr class="stat-row">
         <td colspan="2">{{ s.name }}</td>
@@ -411,6 +418,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     {% if top30_stats %}
     <tbody>
       <tr class="stats-header"><td colspan="12">Top 30 Fastest Growing Companies</td></tr>
+      <tr class="section-cols"><td></td><td></td><td>Rev Mult.</td><td>Ent. Value</td><td>Mkt Cap</td><td>LTM Rev</td><td>Rev Growth</td><td>LTM EBITDA</td><td>EBITDA Margin</td><td>LTM Op CF</td><td>Debt</td><td>Cash</td></tr>
       {% for s in top30_stats %}
       <tr class="stat-row">
         <td colspan="2">{{ s.name }}</td>
@@ -432,6 +440,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     {% if top30_profitable_stats %}
     <tbody>
       <tr class="stats-header"><td colspan="12">Top 30 Most Profitable Companies</td></tr>
+      <tr class="section-cols"><td></td><td></td><td>Rev Mult.</td><td>Ent. Value</td><td>Mkt Cap</td><td>LTM Rev</td><td>Rev Growth</td><td>LTM EBITDA</td><td>EBITDA Margin</td><td>LTM Op CF</td><td>Debt</td><td>Cash</td></tr>
       {% for s in top30_profitable_stats %}
       <tr class="stat-row">
         <td colspan="2">{{ s.name }}</td>

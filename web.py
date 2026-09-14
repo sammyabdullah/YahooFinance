@@ -129,6 +129,14 @@ def append_history(data: list[dict]) -> None:
     if not valid:
         return
 
+    date_str = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+
+    if HISTORY_FILE.exists():
+        with open(HISTORY_FILE, newline="", encoding="utf-8") as f:
+            if any(row and row[0] == date_str for row in csv.reader(f)):
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] History already recorded for {date_str}, skipping duplicate.")
+                return
+
     all_agg, above_agg, _, n_above = summary_stats(data)
     top30 = sorted(
         [d for d in valid if d.get("rev_growth") is not None],
@@ -146,7 +154,6 @@ def append_history(data: list[dict]) -> None:
         ("Top 30 Most Profitable", _agg(top30_profitable) if top30_profitable else None),
     ]
 
-    date_str = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
     write_header = not HISTORY_FILE.exists()
 
     with open(HISTORY_FILE, "a", newline="", encoding="utf-8") as f:

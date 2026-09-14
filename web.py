@@ -307,8 +307,156 @@ def scheduled_refresh() -> None:
 
 
 # ── HTML template (embedded so no separate templates/ folder is needed) ───────
+#
+# Row/stat markup lives in Jinja macros so the full page and the /api/table
+# refresh fragment (used by "Refresh Now" to update numbers without touching
+# the chart canvases) render from one source of truth.
 
-HTML_TEMPLATE = r"""<!DOCTYPE html>
+ROW_MACROS = r"""
+{% macro ticker_row(row) %}
+{% if row.error %}
+<tr class="error-row">
+  <td colspan="12">Error ({{ row.ticker }}): {{ row.error[:80] }}</td>
+</tr>
+{% else %}
+<tr
+  data-market-cap="{{ row.market_cap if row.market_cap is not none else '' }}"
+  data-revenue="{{ row.revenue if row.revenue is not none else '' }}"
+  data-rev-growth="{{ row.rev_growth if row.rev_growth is not none else '' }}"
+  data-ebitda="{{ row.ebitda if row.ebitda is not none else '' }}"
+  data-ebitda-margin="{{ row.ebitda_margin if row.ebitda_margin is not none else '' }}"
+  data-ocf="{{ row.ocf if row.ocf is not none else '' }}"
+  data-debt="{{ row.debt if row.debt is not none else '' }}"
+  data-cash="{{ row.cash if row.cash is not none else '' }}"
+  data-ev="{{ row.ev if row.ev is not none else '' }}"
+  data-rev-multiple="{{ row.rev_multiple if row.rev_multiple is not none else '' }}"
+>
+  <td>{{ row.name }}</td>
+  <td>{{ row.ticker }}</td>
+  <td>{% if row.rev_multiple is not none %}<span class="val-mult">{{ row.rev_multiple }}x</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>{% if row.ev is not none %}<span class="val-ev">${{ row.ev }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>{% if row.market_cap is not none %}<span class="val-pos">${{ row.market_cap }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>{% if row.revenue is not none %}<span class="val-pos">${{ row.revenue }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>
+    {% if row.rev_growth is not none %}
+      <span class="{{ 'val-pos' if row.rev_growth >= 0 else 'val-neg' }}">{{ '+' if row.rev_growth >= 0 else '' }}{{ row.rev_growth }}%</span>
+    {% else %}<span class="val-null">—</span>{% endif %}
+  </td>
+  <td>{% if row.ebitda is not none %}<span class="{{ 'val-pos' if row.ebitda >= 0 else 'val-neg' }}">${{ row.ebitda }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>
+    {% if row.ebitda_margin is not none %}
+      <span class="{{ 'val-pos' if row.ebitda_margin >= 0 else 'val-neg' }}">{{ '+' if row.ebitda_margin >= 0 else '' }}{{ row.ebitda_margin }}%</span>
+    {% else %}<span class="val-null">—</span>{% endif %}
+  </td>
+  <td>{% if row.ocf is not none %}<span class="{{ 'val-pos' if row.ocf >= 0 else 'val-neg' }}">${{ row.ocf }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>{% if row.debt is not none %}<span class="val-debt">${{ row.debt }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>{% if row.cash is not none %}<span class="val-cash">${{ row.cash }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+</tr>
+{% endif %}
+{% endmacro %}
+
+{% macro stat_row(s) %}
+<tr class="stat-row">
+  <td colspan="2">{{ s.name }}</td>
+  <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
+  <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
+  <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
+  <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
+  <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
+  <td>{% if s.ebitda is not none %}${{ s.ebitda }}B{% else %}—{% endif %}</td>
+  <td>{% if s.ebitda_margin is not none %}{{ '+' if s.ebitda_margin >= 0 else '' }}{{ s.ebitda_margin }}%{% else %}—{% endif %}</td>
+  <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
+  <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
+  <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
+</tr>
+{% endmacro %}
+
+{% macro stats_block(title, stats) %}
+<tr class="stats-header"><td colspan="12">{{ title }}</td></tr>
+<tr class="section-cols"><td></td><td></td><td>Rev Mult.</td><td>Ent. Value</td><td>Mkt Cap</td><td>LTM Rev</td><td>Rev Growth</td><td>LTM EBITDA</td><td>EBITDA Margin</td><td>LTM Op CF</td><td>Debt</td><td>Cash</td></tr>
+{% for s in stats %}{{ stat_row(s) }}{% endfor %}
+{% endmacro %}
+"""
+
+
+def render_fragment(body: str, **ctx) -> str:
+    """Render a small Jinja snippet with the shared row/stat macros in scope."""
+    return render_template_string(ROW_MACROS + body, **ctx)
+
+
+def format_last_updated(last_updated) -> str:
+    if not last_updated:
+        return "Never"
+    try:
+        dt = datetime.fromisoformat(last_updated)
+        eastern = ZoneInfo("America/New_York")
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        dt_et = dt.astimezone(eastern)
+        return dt_et.strftime("%B %-d, %Y at %-I:%M %p ET")
+    except Exception:
+        return last_updated
+
+
+def compute_table_context() -> dict:
+    """Build the row/stat data shown in the table — shared by the full page
+    render and the /api/table refresh fragment."""
+    with _lock:
+        raw_data = list(_cache.get("data", []))
+        last_updated = _cache.get("last_updated")
+
+    rows = [build_row(d) for d in raw_data]
+    valid = [d for d in raw_data if not d.get("error")]
+
+    stats = []
+    above_stats = []
+    top30_stats = []
+    top30_profitable_stats = []
+    if valid:
+        all_agg, above_agg, _, n_above = summary_stats(raw_data)
+        stats = [
+            build_stat_row("All — Median", all_agg, "median"),
+            build_stat_row("All — Average", all_agg, "mean"),
+        ]
+        above_stats = [
+            build_stat_row(f"Above Median Growth — Median (n={n_above})", above_agg, "median"),
+            build_stat_row(f"Above Median Growth — Average (n={n_above})", above_agg, "mean"),
+        ]
+        top30 = sorted(
+            [d for d in valid if d.get("rev_growth") is not None],
+            key=lambda d: d["rev_growth"], reverse=True
+        )[:30]
+        if top30:
+            top30_agg = _agg(top30)
+            n30 = len(top30)
+            top30_stats = [
+                build_stat_row(f"Top {n30} Fastest Growing — Median", top30_agg, "median"),
+                build_stat_row(f"Top {n30} Fastest Growing — Average", top30_agg, "mean"),
+            ]
+        top30_profitable = sorted(
+            [d for d in valid if d.get("ebitda") is not None and d.get("revenue")],
+            key=lambda d: d["ebitda"] / d["revenue"], reverse=True
+        )[:30]
+        if top30_profitable:
+            top30_prof_agg = _agg(top30_profitable)
+            n30p = len(top30_profitable)
+            top30_profitable_stats = [
+                build_stat_row(f"Top {n30p} Most Profitable — Median", top30_prof_agg, "median"),
+                build_stat_row(f"Top {n30p} Most Profitable — Average", top30_prof_agg, "mean"),
+            ]
+
+    return {
+        "rows": rows,
+        "stats": stats,
+        "above_stats": above_stats,
+        "top30_stats": top30_stats,
+        "top30_profitable_stats": top30_profitable_stats,
+        "last_updated": format_last_updated(last_updated),
+        "ticker_count": len(load_tickers()),
+    }
+
+
+HTML_TEMPLATE = ROW_MACROS + r"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -403,8 +551,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <span class="subtitle">powered by <a href="https://www.blossomstreetventures.com" target="_blank" style="color:#58a6ff;font-weight:700;text-decoration:none;">Blossom Street Ventures</a></span>
 </header>
 <div class="meta-bar">
-  <span>Last updated: <strong>{{ last_updated }}</strong></span>
-  <span>{{ ticker_count }} ticker{{ 's' if ticker_count != 1 else '' }}</span>
+  <span>Last updated: <strong id="last-updated">{{ last_updated }}</strong></span>
+  <span id="ticker-count-label">{{ ticker_count }} ticker{{ 's' if ticker_count != 1 else '' }}</span>
   <button id="refresh-btn" onclick="triggerRefresh()">
     <svg viewBox="0 0 16 16" fill="currentColor">
       <path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
@@ -441,133 +589,37 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       </tr>
     </thead>
     <tbody id="ticker-rows">
-      {% for row in rows %}
-        {% if row.error %}
-        <tr class="error-row">
-          <td colspan="12">Error ({{ row.ticker }}): {{ row.error[:80] }}</td>
-        </tr>
-        {% else %}
-        <tr
-          data-market-cap="{{ row.market_cap if row.market_cap is not none else '' }}"
-          data-revenue="{{ row.revenue if row.revenue is not none else '' }}"
-          data-rev-growth="{{ row.rev_growth if row.rev_growth is not none else '' }}"
-          data-ebitda="{{ row.ebitda if row.ebitda is not none else '' }}"
-          data-ebitda-margin="{{ row.ebitda_margin if row.ebitda_margin is not none else '' }}"
-          data-ocf="{{ row.ocf if row.ocf is not none else '' }}"
-          data-debt="{{ row.debt if row.debt is not none else '' }}"
-          data-cash="{{ row.cash if row.cash is not none else '' }}"
-          data-ev="{{ row.ev if row.ev is not none else '' }}"
-          data-rev-multiple="{{ row.rev_multiple if row.rev_multiple is not none else '' }}"
-        >
-          <td>{{ row.name }}</td>
-          <td>{{ row.ticker }}</td>
-          <td>{% if row.rev_multiple is not none %}<span class="val-mult">{{ row.rev_multiple }}x</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-          <td>{% if row.ev is not none %}<span class="val-ev">${{ row.ev }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-          <td>{% if row.market_cap is not none %}<span class="val-pos">${{ row.market_cap }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-          <td>{% if row.revenue is not none %}<span class="val-pos">${{ row.revenue }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-          <td>
-            {% if row.rev_growth is not none %}
-              <span class="{{ 'val-pos' if row.rev_growth >= 0 else 'val-neg' }}">{{ '+' if row.rev_growth >= 0 else '' }}{{ row.rev_growth }}%</span>
-            {% else %}<span class="val-null">—</span>{% endif %}
-          </td>
-          <td>{% if row.ebitda is not none %}<span class="{{ 'val-pos' if row.ebitda >= 0 else 'val-neg' }}">${{ row.ebitda }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-          <td>
-            {% if row.ebitda_margin is not none %}
-              <span class="{{ 'val-pos' if row.ebitda_margin >= 0 else 'val-neg' }}">{{ '+' if row.ebitda_margin >= 0 else '' }}{{ row.ebitda_margin }}%</span>
-            {% else %}<span class="val-null">—</span>{% endif %}
-          </td>
-          <td>{% if row.ocf is not none %}<span class="{{ 'val-pos' if row.ocf >= 0 else 'val-neg' }}">${{ row.ocf }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-          <td>{% if row.debt is not none %}<span class="val-debt">${{ row.debt }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-          <td>{% if row.cash is not none %}<span class="val-cash">${{ row.cash }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-        </tr>
-        {% endif %}
-      {% endfor %}
+      {% for row in rows %}{{ ticker_row(row) }}{% endfor %}
     </tbody>
     {% if stats %}
+    <tbody id="stats-body-all">
+      {{ stats_block("Summary Statistics", stats) }}
+    </tbody>
     <tbody>
-      <tr class="stats-header"><td colspan="12">Summary Statistics</td></tr>
-      <tr class="section-cols"><td></td><td></td><td>Rev Mult.</td><td>Ent. Value</td><td>Mkt Cap</td><td>LTM Rev</td><td>Rev Growth</td><td>LTM EBITDA</td><td>EBITDA Margin</td><td>LTM Op CF</td><td>Debt</td><td>Cash</td></tr>
-      {% for s in stats %}
-      <tr class="stat-row">
-        <td colspan="2">{{ s.name }}</td>
-        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
-        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
-        <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
-        <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
-        <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
-        <td>{% if s.ebitda is not none %}${{ s.ebitda }}B{% else %}—{% endif %}</td>
-        <td>{% if s.ebitda_margin is not none %}{{ '+' if s.ebitda_margin >= 0 else '' }}{{ s.ebitda_margin }}%{% else %}—{% endif %}</td>
-        <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
-        <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
-        <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
-      </tr>
-      {% endfor %}
       <tr class="chart-row"><td colspan="12"><div class="chart-pair"><div class="chart-box"><canvas id="chart-all-median"></canvas></div><div class="chart-box"><canvas id="chart-all-average"></canvas></div></div></td></tr>
     </tbody>
     {% endif %}
     {% if above_stats %}
+    <tbody id="stats-body-above">
+      {{ stats_block("Above Median Growth Companies", above_stats) }}
+    </tbody>
     <tbody>
-      <tr class="stats-header"><td colspan="12">Above Median Growth Companies</td></tr>
-      <tr class="section-cols"><td></td><td></td><td>Rev Mult.</td><td>Ent. Value</td><td>Mkt Cap</td><td>LTM Rev</td><td>Rev Growth</td><td>LTM EBITDA</td><td>EBITDA Margin</td><td>LTM Op CF</td><td>Debt</td><td>Cash</td></tr>
-      {% for s in above_stats %}
-      <tr class="stat-row">
-        <td colspan="2">{{ s.name }}</td>
-        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
-        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
-        <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
-        <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
-        <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
-        <td>{% if s.ebitda is not none %}${{ s.ebitda }}B{% else %}—{% endif %}</td>
-        <td>{% if s.ebitda_margin is not none %}{{ '+' if s.ebitda_margin >= 0 else '' }}{{ s.ebitda_margin }}%{% else %}—{% endif %}</td>
-        <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
-        <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
-        <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
-      </tr>
-      {% endfor %}
       <tr class="chart-row"><td colspan="12"><div class="chart-pair"><div class="chart-box"><canvas id="chart-above-median"></canvas></div><div class="chart-box"><canvas id="chart-above-average"></canvas></div></div></td></tr>
     </tbody>
     {% endif %}
     {% if top30_stats %}
+    <tbody id="stats-body-top30grow">
+      {{ stats_block("Top 30 Fastest Growing Companies", top30_stats) }}
+    </tbody>
     <tbody>
-      <tr class="stats-header"><td colspan="12">Top 30 Fastest Growing Companies</td></tr>
-      <tr class="section-cols"><td></td><td></td><td>Rev Mult.</td><td>Ent. Value</td><td>Mkt Cap</td><td>LTM Rev</td><td>Rev Growth</td><td>LTM EBITDA</td><td>EBITDA Margin</td><td>LTM Op CF</td><td>Debt</td><td>Cash</td></tr>
-      {% for s in top30_stats %}
-      <tr class="stat-row">
-        <td colspan="2">{{ s.name }}</td>
-        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
-        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
-        <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
-        <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
-        <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
-        <td>{% if s.ebitda is not none %}${{ s.ebitda }}B{% else %}—{% endif %}</td>
-        <td>{% if s.ebitda_margin is not none %}{{ '+' if s.ebitda_margin >= 0 else '' }}{{ s.ebitda_margin }}%{% else %}—{% endif %}</td>
-        <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
-        <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
-        <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
-      </tr>
-      {% endfor %}
       <tr class="chart-row"><td colspan="12"><div class="chart-pair"><div class="chart-box"><canvas id="chart-top30grow-median"></canvas></div><div class="chart-box"><canvas id="chart-top30grow-average"></canvas></div></div></td></tr>
     </tbody>
     {% endif %}
     {% if top30_profitable_stats %}
+    <tbody id="stats-body-top30prof">
+      {{ stats_block("Top 30 Most Profitable Companies", top30_profitable_stats) }}
+    </tbody>
     <tbody>
-      <tr class="stats-header"><td colspan="12">Top 30 Most Profitable Companies</td></tr>
-      <tr class="section-cols"><td></td><td></td><td>Rev Mult.</td><td>Ent. Value</td><td>Mkt Cap</td><td>LTM Rev</td><td>Rev Growth</td><td>LTM EBITDA</td><td>EBITDA Margin</td><td>LTM Op CF</td><td>Debt</td><td>Cash</td></tr>
-      {% for s in top30_profitable_stats %}
-      <tr class="stat-row">
-        <td colspan="2">{{ s.name }}</td>
-        <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
-        <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
-        <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
-        <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
-        <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
-        <td>{% if s.ebitda is not none %}${{ s.ebitda }}B{% else %}—{% endif %}</td>
-        <td>{% if s.ebitda_margin is not none %}{{ '+' if s.ebitda_margin >= 0 else '' }}{{ s.ebitda_margin }}%{% else %}—{% endif %}</td>
-        <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
-        <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
-        <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
-      </tr>
-      {% endfor %}
       <tr class="chart-row"><td colspan="12"><div class="chart-pair"><div class="chart-box"><canvas id="chart-top30prof-median"></canvas></div><div class="chart-box"><canvas id="chart-top30prof-average"></canvas></div></div></td></tr>
     </tbody>
     {% endif %}
@@ -583,10 +635,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   let sortCol = -1, sortAsc = true;
   const dataAttrs = [null, null, "rev-multiple", "ev", "market-cap", "revenue", "rev-growth", "ebitda", "ebitda-margin", "ocf", "debt", "cash"];
 
-  function sortTable(col) {
+  function applySort() {
+    if (sortCol === -1) return;
     const tbody = document.getElementById("ticker-rows");
     const rows  = Array.from(tbody.querySelectorAll("tr"));
-    if (sortCol === col) { sortAsc = !sortAsc; } else { sortCol = col; sortAsc = true; }
+    const col = sortCol;
     rows.sort((a, b) => {
       let av, bv;
       if (col <= 1) {
@@ -609,6 +662,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     });
   }
 
+  function sortTable(col) {
+    if (sortCol === col) { sortAsc = !sortAsc; } else { sortCol = col; sortAsc = true; }
+    applySort();
+  }
+
   function triggerRefresh() {
     const btn = document.getElementById("refresh-btn");
     const status = document.getElementById("refresh-status");
@@ -617,7 +675,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     status.textContent = "Fetching data...";
     fetch("/api/refresh", { method: "POST" })
       .then(r => r.json())
-      .then(() => { status.textContent = "Fetching... page will reload when done."; pollForUpdate(); })
+      .then(() => { status.textContent = "Fetching..."; pollForUpdate(); })
       .catch(() => { status.textContent = "Error."; btn.disabled = false; btn.querySelector("svg").classList.remove("spin"); });
   }
 
@@ -626,11 +684,42 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const interval = setInterval(() => {
       fetch("/api/status").then(r => r.json()).then(data => {
         if (data.last_updated && new Date(data.last_updated).getTime() > start - 2000) {
-          clearInterval(interval); location.reload();
+          clearInterval(interval);
+          applyTableUpdate();
         }
       });
     }, 3000);
     setTimeout(() => clearInterval(interval), 180000);
+  }
+
+  // Patches the ticker table and summary-stat numbers in place. Deliberately
+  // does NOT touch the chart canvases — those only move once a day when
+  // history.csv gets a new row, not on every manual refresh.
+  async function applyTableUpdate() {
+    const btn = document.getElementById("refresh-btn");
+    const status = document.getElementById("refresh-status");
+    const tickerRows = document.getElementById("ticker-rows");
+    if (!tickerRows) { location.reload(); return; }  // first-ever load had no data yet
+    try {
+      const data = await fetch("/api/table").then(r => r.json());
+      tickerRows.innerHTML = data.rows_html;
+      const setBody = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+      setBody("stats-body-all", data.stats_html);
+      setBody("stats-body-above", data.above_html);
+      setBody("stats-body-top30grow", data.top30_html);
+      setBody("stats-body-top30prof", data.top30_profitable_html);
+      document.getElementById("last-updated").textContent = data.last_updated;
+      document.getElementById("ticker-count-label").textContent =
+        `${data.ticker_count} ticker${data.ticker_count !== 1 ? "s" : ""}`;
+      applySort();
+      status.textContent = "Updated.";
+    } catch (e) {
+      status.textContent = "Error.";
+    } finally {
+      btn.disabled = false;
+      btn.querySelector("svg").classList.remove("spin");
+      setTimeout(() => { status.textContent = ""; }, 4000);
+    }
   }
 
   const CHART_DEFS = [
@@ -716,73 +805,38 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
 @app.route("/")
 def index():
-    with _lock:
-        raw_data = list(_cache.get("data", []))
-        last_updated = _cache.get("last_updated")
+    return render_template_string(HTML_TEMPLATE, **compute_table_context())
 
-    rows = [build_row(d) for d in raw_data]
-    valid = [d for d in raw_data if not d.get("error")]
 
-    stats = []
-    above_stats = []
-    top30_stats = []
-    top30_profitable_stats = []
-    if valid:
-        all_agg, above_agg, _, n_above = summary_stats(raw_data)
-        stats = [
-            build_stat_row("All — Median", all_agg, "median"),
-            build_stat_row("All — Average", all_agg, "mean"),
-        ]
-        above_stats = [
-            build_stat_row(f"Above Median Growth — Median (n={n_above})", above_agg, "median"),
-            build_stat_row(f"Above Median Growth — Average (n={n_above})", above_agg, "mean"),
-        ]
-        top30 = sorted(
-            [d for d in valid if d.get("rev_growth") is not None],
-            key=lambda d: d["rev_growth"], reverse=True
-        )[:30]
-        if top30:
-            top30_agg = _agg(top30)
-            n30 = len(top30)
-            top30_stats = [
-                build_stat_row(f"Top {n30} Fastest Growing — Median", top30_agg, "median"),
-                build_stat_row(f"Top {n30} Fastest Growing — Average", top30_agg, "mean"),
-            ]
-        top30_profitable = sorted(
-            [d for d in valid if d.get("ebitda") is not None and d.get("revenue")],
-            key=lambda d: d["ebitda"] / d["revenue"], reverse=True
-        )[:30]
-        if top30_profitable:
-            top30_prof_agg = _agg(top30_profitable)
-            n30p = len(top30_profitable)
-            top30_profitable_stats = [
-                build_stat_row(f"Top {n30p} Most Profitable — Median", top30_prof_agg, "median"),
-                build_stat_row(f"Top {n30p} Most Profitable — Average", top30_prof_agg, "mean"),
-            ]
+@app.route("/api/table")
+def api_table():
+    """Return freshly rendered table/stat HTML for the "Refresh Now" button.
 
-    if last_updated:
-        try:
-            dt = datetime.fromisoformat(last_updated)
-            eastern = ZoneInfo("America/New_York")
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            dt_et = dt.astimezone(eastern)
-            last_updated_fmt = dt_et.strftime("%B %-d, %Y at %-I:%M %p ET")
-        except Exception:
-            last_updated_fmt = last_updated
-    else:
-        last_updated_fmt = "Never"
-
-    return render_template_string(
-        HTML_TEMPLATE,
-        rows=rows,
-        stats=stats,
-        above_stats=above_stats,
-        top30_stats=top30_stats,
-        top30_profitable_stats=top30_profitable_stats,
-        last_updated=last_updated_fmt,
-        ticker_count=len(load_tickers()),
-    )
+    Deliberately excludes the charts — those only move once a day when
+    history.csv gets a new row, so a manual refresh must update the live
+    numbers without re-rendering (and re-animating) the chart canvases.
+    """
+    ctx = compute_table_context()
+    return jsonify({
+        "last_updated": ctx["last_updated"],
+        "ticker_count": ctx["ticker_count"],
+        "rows_html": render_fragment(
+            "{% for row in rows %}{{ ticker_row(row) }}{% endfor %}", rows=ctx["rows"]
+        ),
+        "stats_html": render_fragment(
+            '{{ stats_block("Summary Statistics", stats) }}', stats=ctx["stats"]
+        ) if ctx["stats"] else "",
+        "above_html": render_fragment(
+            '{{ stats_block("Above Median Growth Companies", above_stats) }}', above_stats=ctx["above_stats"]
+        ) if ctx["above_stats"] else "",
+        "top30_html": render_fragment(
+            '{{ stats_block("Top 30 Fastest Growing Companies", top30_stats) }}', top30_stats=ctx["top30_stats"]
+        ) if ctx["top30_stats"] else "",
+        "top30_profitable_html": render_fragment(
+            '{{ stats_block("Top 30 Most Profitable Companies", top30_profitable_stats) }}',
+            top30_profitable_stats=ctx["top30_profitable_stats"],
+        ) if ctx["top30_profitable_stats"] else "",
+    })
 
 
 @app.route("/api/refresh", methods=["POST"])

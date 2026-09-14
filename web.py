@@ -390,6 +390,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     }
     .section-cols td:first-child, .section-cols td:nth-child(2) { text-align: left; }
     .chart-row td { background: #0d1117; padding: 16px 20px 20px; border-top: none; }
+    .chart-pair { display: flex; gap: 16px; height: 280px; }
+    .chart-box { flex: 1 1 0; min-width: 0; position: relative; }
     .chart-placeholder { color: #484f58; font-size: 0.78rem; font-style: italic; text-align: center; padding: 40px 0; border: 1px dashed #21262d; border-radius: 6px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .spin { animation: spin 1s linear infinite; display: inline-block; }
@@ -500,7 +502,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
-      <tr class="chart-row"><td colspan="12"><div style="height:280px;position:relative;"><canvas id="chart-all"></canvas></div></td></tr>
+      <tr class="chart-row"><td colspan="12"><div class="chart-pair"><div class="chart-box"><canvas id="chart-all-median"></canvas></div><div class="chart-box"><canvas id="chart-all-average"></canvas></div></div></td></tr>
     </tbody>
     {% endif %}
     {% if above_stats %}
@@ -522,7 +524,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
-      <tr class="chart-row"><td colspan="12"><div style="height:280px;position:relative;"><canvas id="chart-above"></canvas></div></td></tr>
+      <tr class="chart-row"><td colspan="12"><div class="chart-pair"><div class="chart-box"><canvas id="chart-above-median"></canvas></div><div class="chart-box"><canvas id="chart-above-average"></canvas></div></div></td></tr>
     </tbody>
     {% endif %}
     {% if top30_stats %}
@@ -544,7 +546,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
-      <tr class="chart-row"><td colspan="12"><div style="height:280px;position:relative;"><canvas id="chart-top30grow"></canvas></div></td></tr>
+      <tr class="chart-row"><td colspan="12"><div class="chart-pair"><div class="chart-box"><canvas id="chart-top30grow-median"></canvas></div><div class="chart-box"><canvas id="chart-top30grow-average"></canvas></div></div></td></tr>
     </tbody>
     {% endif %}
     {% if top30_profitable_stats %}
@@ -566,7 +568,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
       </tr>
       {% endfor %}
-      <tr class="chart-row"><td colspan="12"><div style="height:280px;position:relative;"><canvas id="chart-top30prof"></canvas></div></td></tr>
+      <tr class="chart-row"><td colspan="12"><div class="chart-pair"><div class="chart-box"><canvas id="chart-top30prof-median"></canvas></div><div class="chart-box"><canvas id="chart-top30prof-average"></canvas></div></div></td></tr>
     </tbody>
     {% endif %}
   </table>
@@ -632,23 +634,35 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
 
   const CHART_DEFS = [
-    { id: "chart-all",       section: "All Companies" },
-    { id: "chart-above",     section: "Above Median Growth" },
-    { id: "chart-top30grow", section: "Top 30 Fastest Growing" },
-    { id: "chart-top30prof", section: "Top 30 Most Profitable" },
+    { id: "chart-all-median",        section: "All Companies",          stat: "Median",  color: "#58a6ff" },
+    { id: "chart-all-average",       section: "All Companies",          stat: "Average", color: "#d2a8ff" },
+    { id: "chart-above-median",      section: "Above Median Growth",    stat: "Median",  color: "#58a6ff" },
+    { id: "chart-above-average",     section: "Above Median Growth",    stat: "Average", color: "#d2a8ff" },
+    { id: "chart-top30grow-median",  section: "Top 30 Fastest Growing", stat: "Median",  color: "#58a6ff" },
+    { id: "chart-top30grow-average", section: "Top 30 Fastest Growing", stat: "Average", color: "#d2a8ff" },
+    { id: "chart-top30prof-median",  section: "Top 30 Most Profitable", stat: "Median",  color: "#58a6ff" },
+    { id: "chart-top30prof-average", section: "Top 30 Most Profitable", stat: "Average", color: "#d2a8ff" },
   ];
   const chartInstances = {};
   const CHART_DEFAULTS = {
     responsive: true, maintainAspectRatio: false,
     plugins: {
-      legend: { labels: { color: "#8b949e", font: { size: 11 }, boxWidth: 12 } },
-      tooltip: { callbacks: { label: ctx => " " + ctx.dataset.label + ": " + ctx.parsed.y + "x" } }
+      legend: { display: false },
+      title: { display: true, color: "#8b949e", font: { size: 11, weight: "600" }, padding: { bottom: 8 } },
+      tooltip: { callbacks: { label: ctx => " " + ctx.parsed.y + "x" } }
     },
     scales: {
       x: { ticks: { color: "#8b949e", font: { size: 10 }, maxRotation: 0 }, grid: { color: "#21262d" } },
       y: { ticks: { color: "#8b949e", font: { size: 10 }, callback: v => v + "x" }, grid: { color: "#21262d" } }
     }
   };
+
+  function chartOptions(title) {
+    return {
+      ...CHART_DEFAULTS,
+      plugins: { ...CHART_DEFAULTS.plugins, title: { ...CHART_DEFAULTS.plugins.title, text: title } },
+    };
+  }
 
   function showPlaceholder(id) {
     const canvas = document.getElementById(id);
@@ -663,20 +677,19 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     catch(e) { CHART_DEFS.forEach(c => showPlaceholder(c.id)); return; }
     if (!rows.length) { CHART_DEFS.forEach(c => showPlaceholder(c.id)); return; }
 
-    for (const { id, section } of CHART_DEFS) {
+    for (const { id, section, stat, color } of CHART_DEFS) {
       const canvas = document.getElementById(id);
       if (!canvas) continue;
-      const sRows = rows.filter(r => r.Section === section);
+      const sRows = rows.filter(r => r.Section === section && r.Type === stat);
       const dates = [...new Set(sRows.map(r => r.Date))].sort();
       if (!dates.length) { showPlaceholder(id); continue; }
 
-      const get = (date, type, col) => {
-        const r = sRows.find(r => r.Date === date && r.Type === type);
-        return r ? (parseFloat(r[col]) || null) : null;
+      const get = (date) => {
+        const r = sRows.find(r => r.Date === date);
+        return r ? (parseFloat(r["Rev Multiple (x)"]) || null) : null;
       };
 
-      const medians = dates.map(d => get(d, "Median", "Rev Multiple (x)"));
-      const avgs    = dates.map(d => get(d, "Average", "Rev Multiple (x)"));
+      const values = dates.map(get);
 
       if (chartInstances[id]) chartInstances[id].destroy();
       chartInstances[id] = new Chart(canvas, {
@@ -684,11 +697,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         data: {
           labels: dates,
           datasets: [
-            { label: "Median", data: medians, borderColor: "#58a6ff", backgroundColor: "rgba(88,166,255,0.08)", fill: true,  tension: 0.3, pointRadius: 3 },
-            { label: "Average", data: avgs,   borderColor: "#d2a8ff", backgroundColor: "transparent",           fill: false, tension: 0.3, pointRadius: 3 },
+            { label: stat, data: values, borderColor: color, backgroundColor: color + "14", fill: true, tension: 0.3, pointRadius: 3 },
           ]
         },
-        options: CHART_DEFAULTS
+        options: chartOptions(stat)
       });
     }
   }

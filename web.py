@@ -10,10 +10,12 @@ import csv
 import io
 import json
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
+import pandas as pd
+import yfinance as yf
 from flask import Flask, jsonify, render_template_string, request, Response
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -123,19 +125,20 @@ def _fmt_h(value, scale=1.0) -> str:
         return ""
 
 
-def append_history(data: list[dict]) -> None:
-    """Append today's summary stats to history.csv."""
+def _write_history_for_date(data: list[dict], date_str: str) -> bool:
+    """Compute summary sections for `data` and append a row-set for date_str.
+
+    Returns True if rows were written, False if skipped (no valid data, or
+    date_str is already present in history.csv).
+    """
     valid = [d for d in data if not d.get("error")]
     if not valid:
-        return
-
-    date_str = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+        return False
 
     if HISTORY_FILE.exists():
         with open(HISTORY_FILE, newline="", encoding="utf-8") as f:
             if any(row and row[0] == date_str for row in csv.reader(f)):
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] History already recorded for {date_str}, skipping duplicate.")
-                return
+                return False
 
     all_agg, above_agg, _, n_above = summary_stats(data)
     top30 = sorted(
@@ -178,7 +181,106 @@ def append_history(data: list[dict]) -> None:
                     _fmt_h(agg["debt"][stat], 1/1e9),
                     _fmt_h(agg["cash"][stat], 1/1e9),
                 ])
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] History recorded for {date_str}.")
+    return True
+
+
+def append_history(data: list[dict]) -> None:
+    """Append today's summary stats to history.csv."""
+    date_str = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    if _write_history_for_date(data, date_str):
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] History recorded for {date_str}.")
+    else:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] History already recorded (or no data) for {date_str}.")
+
+
+def backfill_history() -> None:
+    """Reconstruct any missing trading days in history.csv.
+
+    Railway rebuilds the app's filesystem from git on every deploy, so rows
+    appended by the daily scheduled job since the last commit get wiped the
+    next time code is pushed. This fetches historical closing prices for the
+    gap and re-derives approximate daily rows (market cap/EV/multiple scaled
+    by price movement, other fundamentals held at their latest fetched
+    values) so the chart always reaches the most recent completed session,
+    regardless of what got wiped between deploys.
+    """
+    with _lock:
+        data = list(_cache.get("data", []))
+    valid = [d for d in data if not d.get("error") and d.get("market_cap")]
+    if not valid or not HISTORY_FILE.exists():
+        return
+
+    with open(HISTORY_FILE, newline="", encoding="utf-8") as f:
+        existing_dates = {row[0] for row in csv.reader(f) if row and row[0] != "Date"}
+    if not existing_dates:
+        return
+
+    eastern = ZoneInfo("America/New_York")
+    now_et = datetime.now(eastern)
+    last_date = datetime.strptime(max(existing_dates), "%Y-%m-%d").date()
+    start = last_date + timedelta(days=1)
+    cutoff = now_et.replace(hour=16, minute=30, second=0, microsecond=0)
+    end = now_et.date() if now_et.replace(tzinfo=None) >= cutoff.replace(tzinfo=None) else now_et.date() - timedelta(days=1)
+    if start > end:
+        return
+
+    tickers = [d["ticker"] for d in valid]
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Backfilling history from {start} to {end}…")
+    try:
+        hist = yf.download(
+            tickers=tickers, start=start.isoformat(), end=(end + timedelta(days=1)).isoformat(),
+            progress=False, auto_adjust=False, group_by="ticker", threads=True,
+        )
+    except Exception as e:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Backfill download failed: {e}")
+        return
+    if hist is None or hist.empty:
+        return
+
+    by_ticker = {d["ticker"]: d for d in valid}
+    ref_close = {}
+    for t in tickers:
+        try:
+            closes = hist[t]["Close"].dropna()
+        except Exception:
+            continue
+        if not closes.empty:
+            ref_close[t] = float(closes.iloc[-1])
+
+    trading_days = sorted(
+        ts.strftime("%Y-%m-%d") for ts in hist.index
+        if start.isoformat() <= ts.strftime("%Y-%m-%d") <= end.isoformat()
+    )
+
+    written = 0
+    for day in trading_days:
+        if day in existing_dates:
+            continue
+        day_ts = pd.Timestamp(day)
+        synthetic = []
+        for t in tickers:
+            base = by_ticker[t]
+            if t not in ref_close or not ref_close[t]:
+                continue
+            try:
+                day_close = hist[t]["Close"].get(day_ts)
+            except Exception:
+                day_close = None
+            if day_close is None or pd.isna(day_close) or base.get("market_cap") is None:
+                continue
+            ratio = float(day_close) / ref_close[t]
+            market_cap = base["market_cap"] * ratio
+            debt = base.get("debt") or 0
+            cash = base.get("cash") or 0
+            ev = market_cap + debt - cash
+            revenue = base.get("revenue")
+            rev_multiple = (ev / revenue) if revenue else None
+            synthetic.append({**base, "market_cap": market_cap, "ev": ev, "rev_multiple": rev_multiple})
+        if synthetic and _write_history_for_date(synthetic, day):
+            written += 1
+            existing_dates.add(day)
+
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Backfill complete: {written} day(s) added.")
 
 
 def refresh_data() -> None:
@@ -196,8 +298,9 @@ def refresh_data() -> None:
 
 
 def scheduled_refresh() -> None:
-    """Daily 4:30 PM refresh — fetches data then appends summary to history."""
+    """Daily 4:30 PM refresh — fetches data, backfills any gap, then appends today."""
     refresh_data()
+    backfill_history()
     with _lock:
         data = list(_cache.get("data", []))
     append_history(data)
@@ -760,9 +863,14 @@ def download_history():
 # ── Startup ───────────────────────────────────────────────────────────────────
 # Runs at import time so both `python web.py` and `gunicorn web:app` initialize.
 
+def _startup_refresh_and_backfill() -> None:
+    if not _cache.get("data"):
+        refresh_data()
+    backfill_history()
+
+
 load_cache()
-if not _cache.get("data"):
-    threading.Thread(target=refresh_data, daemon=True).start()
+threading.Thread(target=_startup_refresh_and_backfill, daemon=True).start()
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(scheduled_refresh, "cron", hour=16, minute=30, id="daily_refresh", timezone="America/New_York")

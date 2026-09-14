@@ -695,12 +695,16 @@ HTML_TEMPLATE = ROW_MACROS + r"""<!DOCTYPE html>
 
   // Patches the ticker table and summary-stat numbers in place. Deliberately
   // does NOT touch the chart canvases — those only move once a day when
-  // history.csv gets a new row, not on every manual refresh.
-  async function applyTableUpdate() {
+  // history.csv gets a new row, not on every refresh.
+  //
+  // `silent` is used by the background auto-poll (see below): it just
+  // re-renders whatever the server's periodic intraday job already fetched,
+  // without spinning the button or triggering a new Yahoo fetch itself.
+  async function applyTableUpdate(silent = false) {
     const btn = document.getElementById("refresh-btn");
     const status = document.getElementById("refresh-status");
     const tickerRows = document.getElementById("ticker-rows");
-    if (!tickerRows) { location.reload(); return; }  // first-ever load had no data yet
+    if (!tickerRows) { if (!silent) location.reload(); return; }  // first-ever load had no data yet
     try {
       const data = await fetch("/api/table").then(r => r.json());
       // If a section had no data on initial load, its tbody was never rendered.
@@ -716,21 +720,27 @@ HTML_TEMPLATE = ROW_MACROS + r"""<!DOCTYPE html>
         setBody("stats-body-top30grow", data.top30_html),
         setBody("stats-body-top30prof", data.top30_profitable_html),
       ].every(Boolean);
-      if (!allPresent) { location.reload(); return; }
+      if (!allPresent) { if (!silent) location.reload(); return; }
       tickerRows.innerHTML = data.rows_html;
       document.getElementById("last-updated").textContent = data.last_updated;
       document.getElementById("ticker-count-label").textContent =
         `${data.ticker_count} ticker${data.ticker_count !== 1 ? "s" : ""}`;
       applySort();
-      status.textContent = "Updated.";
+      if (!silent) status.textContent = "Updated.";
     } catch (e) {
-      status.textContent = "Error.";
+      if (!silent) status.textContent = "Error.";
     } finally {
-      btn.disabled = false;
-      btn.querySelector("svg").classList.remove("spin");
-      setTimeout(() => { status.textContent = ""; }, 4000);
+      if (!silent) {
+        btn.disabled = false;
+        btn.querySelector("svg").classList.remove("spin");
+        setTimeout(() => { status.textContent = ""; }, 4000);
+      }
     }
   }
+
+  // Pick up whatever the server's intraday refresh job has fetched since
+  // this page loaded, so a tab left open all day doesn't go stale.
+  setInterval(() => applyTableUpdate(true), 120000);
 
   const CHART_DEFS = [
     { id: "chart-all-median",        section: "All Companies",          stat: "Median",  color: "#58a6ff" },
@@ -950,6 +960,15 @@ threading.Thread(target=_startup_refresh_and_backfill, daemon=True).start()
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(scheduled_refresh, "cron", hour=16, minute=30, id="daily_refresh", timezone="America/New_York")
+# Without this, the live table only ever refreshed once a day (at close) or
+# on a manual "Refresh Now" click — a container left running all day would
+# show numbers frozen from whenever it last fetched, no matter how much the
+# market moved intraday. Keep the cache current during the trading day too.
+scheduler.add_job(
+    refresh_data, "cron",
+    day_of_week="mon-fri", hour="9-16", minute="*/15",
+    id="intraday_refresh", timezone="America/New_York",
+)
 scheduler.start()
 
 if __name__ == "__main__":

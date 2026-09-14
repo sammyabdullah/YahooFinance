@@ -649,11 +649,11 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     plugins: {
       legend: { display: false },
       title: { display: true, color: "#8b949e", font: { size: 11, weight: "600" }, padding: { bottom: 8 } },
-      tooltip: { callbacks: { label: ctx => " " + ctx.parsed.y + "x" } }
+      tooltip: { callbacks: { label: ctx => " " + ctx.parsed.y.toFixed(1) + "x" } }
     },
     scales: {
       x: { ticks: { color: "#8b949e", font: { size: 10 }, maxRotation: 0 }, grid: { color: "#21262d" } },
-      y: { ticks: { color: "#8b949e", font: { size: 10 }, callback: v => v + "x" }, grid: { color: "#21262d" } }
+      y: { ticks: { color: "#8b949e", font: { size: 10 }, callback: v => v.toFixed(1) + "x" }, grid: { color: "#21262d" } }
     }
   };
 

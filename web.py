@@ -528,6 +528,7 @@ HTML_TEMPLATE = ROW_MACROS + r"""<!DOCTYPE html>
     .stat-row td { background: #13181f; color: #8b949e; font-style: italic; font-size: 0.82rem; padding: 7px 14px; }
     .stat-row td:first-child { color: #8b949e; font-weight: 400; text-align: left; }
     .stat-row td:nth-child(n+2) { text-align: right; font-family: inherit; font-size: 0.82rem; color: #8b949e; font-weight: 400; }
+    .stat-row:last-child td { border-bottom: 1px solid #21262d; }
     .error-row td { color: #f85149; font-size: 0.82rem; }
     .empty-state { text-align: center; padding: 60px 20px; color: #8b949e; }
     .empty-state p { margin-bottom: 8px; }
@@ -702,12 +703,21 @@ HTML_TEMPLATE = ROW_MACROS + r"""<!DOCTYPE html>
     if (!tickerRows) { location.reload(); return; }  // first-ever load had no data yet
     try {
       const data = await fetch("/api/table").then(r => r.json());
+      // If a section had no data on initial load, its tbody was never rendered.
+      // Don't silently drop newly-appeared data — fall back to a full reload.
+      const setBody = (id, html) => {
+        const el = document.getElementById(id);
+        if (el) { el.innerHTML = html; return true; }
+        return !html;
+      };
+      const allPresent = [
+        setBody("stats-body-all", data.stats_html),
+        setBody("stats-body-above", data.above_html),
+        setBody("stats-body-top30grow", data.top30_html),
+        setBody("stats-body-top30prof", data.top30_profitable_html),
+      ].every(Boolean);
+      if (!allPresent) { location.reload(); return; }
       tickerRows.innerHTML = data.rows_html;
-      const setBody = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
-      setBody("stats-body-all", data.stats_html);
-      setBody("stats-body-above", data.above_html);
-      setBody("stats-body-top30grow", data.top30_html);
-      setBody("stats-body-top30prof", data.top30_profitable_html);
       document.getElementById("last-updated").textContent = data.last_updated;
       document.getElementById("ticker-count-label").textContent =
         `${data.ticker_count} ticker${data.ticker_count !== 1 ? "s" : ""}`;

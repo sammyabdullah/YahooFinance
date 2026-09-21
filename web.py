@@ -186,11 +186,15 @@ def _write_history_for_date(data: list[dict], date_str: str) -> bool:
 
 def append_history(data: list[dict]) -> None:
     """Append today's summary stats to history.csv."""
-    date_str = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+    if now_et.weekday() >= 5:  # 5=Saturday, 6=Sunday
+        print(f"[{now_et.strftime('%H:%M:%S')}] Skipping history — weekend.")
+        return
+    date_str = now_et.strftime("%Y-%m-%d")
     if _write_history_for_date(data, date_str):
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] History recorded for {date_str}.")
+        print(f"[{now_et.strftime('%H:%M:%S')}] History recorded for {date_str}.")
     else:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] History already recorded (or no data) for {date_str}.")
+        print(f"[{now_et.strftime('%H:%M:%S')}] History already recorded (or no data) for {date_str}.")
 
 
 def backfill_history() -> None:
@@ -931,6 +935,8 @@ def api_history():
     with open(HISTORY_FILE, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             rows.append(dict(row))
+    # Only return actual trading days — strip any weekend rows
+    rows = [r for r in rows if datetime.strptime(r["Date"], "%Y-%m-%d").weekday() < 5]
     return jsonify(rows)
 
 

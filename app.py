@@ -66,8 +66,17 @@ def fetch_ticker_data(ticker: str) -> dict:
         t = yf.Ticker(ticker)
         info = t.info
 
-        # Market cap
-        market_cap = info.get("marketCap")
+        # Market cap — compute from the live quote price when possible rather
+        # than trusting Yahoo's own "marketCap" field. That field has been
+        # observed lagging the actual quote (e.g. holding flat through a big
+        # intraday move) even on a freshly-fetched info dict, while
+        # regularMarketPrice is the same live tick Yahoo's own site shows.
+        live_price = info.get("regularMarketPrice")
+        shares_outstanding = info.get("sharesOutstanding")
+        if live_price is not None and shares_outstanding:
+            market_cap = live_price * shares_outstanding
+        else:
+            market_cap = info.get("marketCap")
 
         # LTM Revenue — prefer trailing, fall back to annual
         revenue = info.get("totalRevenue")

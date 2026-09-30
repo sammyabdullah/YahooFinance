@@ -231,8 +231,17 @@ def backfill_history() -> None:
     tickers = [d["ticker"] for d in valid]
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Backfilling history from {start} to {end}…")
     try:
+        # Download through *today*, not just through `end` (yesterday). The
+        # ratio below scales today's live cache backward using
+        # close(day)/close(ref_day) — that's only valid if ref_day is the
+        # same moment the live cache reflects (i.e. today). Ending the
+        # download at `end` made ref_day == end, so the most recent day
+        # being backfilled always got ratio == 1 and was silently written
+        # as an exact copy of today's live (intraday) numbers instead of
+        # that day's real close.
         hist = yf.download(
-            tickers=tickers, start=start.isoformat(), end=(end + timedelta(days=1)).isoformat(),
+            tickers=tickers, start=start.isoformat(),
+            end=(now_et.date() + timedelta(days=1)).isoformat(),
             progress=False, auto_adjust=False, group_by="ticker", threads=True,
         )
     except Exception as e:

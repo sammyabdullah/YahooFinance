@@ -1,1 +1,1 @@
-web: gunicorn web:app
+web: PYTHONUNBUFFERED=1 gunicorn web:app

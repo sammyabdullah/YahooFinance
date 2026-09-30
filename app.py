@@ -66,18 +66,27 @@ def fetch_ticker_data(ticker: str) -> dict:
         t = yf.Ticker(ticker)
         info = t.info
 
-        # Market cap — computed from today's trading price rather than
-        # info["marketCap"]/info["regularMarketPrice"]. Both of those come
-        # from Yahoo's quote-summary snapshot, which is the field that
-        # doesn't reliably move intraday (that's the original bug this
-        # watchlist kept hitting). t.history(period="1d") hits a separate,
-        # lighter Yahoo endpoint whose "today" bar keeps updating through
-        # the session, without pulling a full year of history per ticker.
+        # Market cap — computed from a minute-resolution intraday bar.
+        #
+        # Every previous attempt here — info["regularMarketPrice"],
+        # fast_info.market_cap, and t.history(period="1d") with its default
+        # interval — all resolve to a DAILY bar under the hood. During a
+        # still-open trading session, Yahoo apparently doesn't finalize
+        # today's daily bar, so all three silently reported the prior
+        # session's close: confirmed by checking that this table is not
+        # wired to history.csv at all (only /api/history is), so the table
+        # matching the chart's stale value means fetch_ticker_data() itself
+        # is returning yesterday's number, not a read-path bug.
+        #
+        # Requesting an explicit intraday interval hits a different Yahoo
+        # code path that does carry a live, still-updating "today" bar.
         market_cap = None
         shares_outstanding = info.get("sharesOutstanding")
         if shares_outstanding:
             try:
-                todays_bar = t.history(period="1d")
+                todays_bar = t.history(period="1d", interval="1m")
+                if todays_bar.empty:
+                    todays_bar = t.history(period="5d", interval="1m")
                 if not todays_bar.empty:
                     live_price = float(todays_bar["Close"].iloc[-1])
                     market_cap = live_price * shares_outstanding

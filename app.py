@@ -66,8 +66,25 @@ def fetch_ticker_data(ticker: str) -> dict:
         t = yf.Ticker(ticker)
         info = t.info
 
-        # Market cap
-        market_cap = info.get("marketCap")
+        # Market cap — computed from today's trading price rather than
+        # info["marketCap"]/info["regularMarketPrice"]. Both of those come
+        # from Yahoo's quote-summary snapshot, which is the field that
+        # doesn't reliably move intraday (that's the original bug this
+        # watchlist kept hitting). t.history(period="1d") hits a separate,
+        # lighter Yahoo endpoint whose "today" bar keeps updating through
+        # the session, without pulling a full year of history per ticker.
+        market_cap = None
+        shares_outstanding = info.get("sharesOutstanding")
+        if shares_outstanding:
+            try:
+                todays_bar = t.history(period="1d")
+                if not todays_bar.empty:
+                    live_price = float(todays_bar["Close"].iloc[-1])
+                    market_cap = live_price * shares_outstanding
+            except Exception:
+                pass
+        if market_cap is None:
+            market_cap = info.get("marketCap")
 
         # LTM Revenue — prefer trailing, fall back to annual
         revenue = info.get("totalRevenue")

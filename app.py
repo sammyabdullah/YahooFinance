@@ -66,17 +66,29 @@ def fetch_ticker_data(ticker: str) -> dict:
         t = yf.Ticker(ticker)
         info = t.info
 
-        # Market cap — compute from the live quote price when possible rather
-        # than trusting Yahoo's own "marketCap" field. That field has been
-        # observed lagging the actual quote (e.g. holding flat through a big
-        # intraday move) even on a freshly-fetched info dict, while
-        # regularMarketPrice is the same live tick Yahoo's own site shows.
-        live_price = info.get("regularMarketPrice")
-        shares_outstanding = info.get("sharesOutstanding")
-        if live_price is not None and shares_outstanding:
-            market_cap = live_price * shares_outstanding
-        else:
-            market_cap = info.get("marketCap")
+        # Market cap — computed from the live trading price rather than
+        # Yahoo's info[] snapshot. In the installed yfinance version, both
+        # info["regularMarketPrice"] and info["marketCap"] come back empty
+        # (yfinance's own test suite has stopped asserting they match
+        # fast_info, since Yahoo no longer reliably serves them on that
+        # endpoint), so the old regularMarketPrice/marketCap fallback chain
+        # silently never fired and market cap stayed frozen. fast_info
+        # derives price from the actual live-updating daily price bar
+        # instead, the same technique already used for backfill_history().
+        market_cap = None
+        try:
+            fast_mcap = t.fast_info.get("marketCap")
+            if fast_mcap is not None:
+                market_cap = float(fast_mcap)
+        except Exception:
+            pass
+        if market_cap is None:
+            live_price = info.get("regularMarketPrice")
+            shares_outstanding = info.get("sharesOutstanding")
+            if live_price is not None and shares_outstanding:
+                market_cap = live_price * shares_outstanding
+            else:
+                market_cap = info.get("marketCap")
 
         # LTM Revenue — prefer trailing, fall back to annual
         revenue = info.get("totalRevenue")

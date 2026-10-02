@@ -10,7 +10,7 @@ import json
 import os
 import statistics
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import yfinance as yf
@@ -66,46 +66,8 @@ def fetch_ticker_data(ticker: str) -> dict:
         t = yf.Ticker(ticker)
         info = t.info
 
-        # Market cap — computed from today's trading price rather than
-        # info["marketCap"]/info["regularMarketPrice"]. Both of those come
-        # from Yahoo's quote-summary snapshot, which is the field that
-        # doesn't reliably move intraday (that's the original bug this
-        # watchlist kept hitting). t.history(period="1d") hits a separate,
-        # lighter Yahoo endpoint whose "today" bar keeps updating through
-        # the session, without pulling a full year of history per ticker.
-        #
-        # Share count comes from get_shares_full() rather than
-        # info["sharesOutstanding"]: for companies with multiple share
-        # classes (e.g. dual-class stock), sharesOutstanding can reflect
-        # only one class, undercounting market cap against what Yahoo
-        # itself displays. get_shares_full() is the same share-count
-        # series yfinance's own fast_info.market_cap uses.
-        market_cap = None
-        live_price = None
-        try:
-            todays_bar = t.history(period="1d")
-            if not todays_bar.empty:
-                live_price = float(todays_bar["Close"].iloc[-1])
-        except Exception:
-            pass
-
-        if live_price is not None:
-            shares = None
-            try:
-                shares_series = t.get_shares_full(
-                    start=(datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
-                )
-                if shares_series is not None and not shares_series.empty:
-                    shares = int(shares_series.iloc[-1])
-            except Exception:
-                pass
-            if not shares:
-                shares = info.get("sharesOutstanding")
-            if shares:
-                market_cap = live_price * shares
-
-        if market_cap is None:
-            market_cap = info.get("marketCap")
+        # Market cap — Yahoo's own figure, as shown on the site.
+        market_cap = info.get("marketCap")
 
         # LTM Revenue — prefer trailing, fall back to annual
         revenue = info.get("totalRevenue")

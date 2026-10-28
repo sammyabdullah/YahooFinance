@@ -9,6 +9,8 @@ Then open: http://localhost:5000
 import csv
 import io
 import json
+import os
+import shutil
 import threading
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -106,7 +108,18 @@ def build_stat_row(label: str, agg: dict, stat: str) -> dict:
 
 # ── Refresh logic ─────────────────────────────────────────────────────────────
 
-HISTORY_FILE = Path("history.csv")
+# Railway rebuilds the app's filesystem from git on every deploy. Without a
+# persistent volume, a history.csv written to the working directory gets
+# wiped on the next deploy, forcing backfill_history() to re-synthesize
+# months of chart data from scratch each time. Pointing HISTORY_DIR at a
+# mounted Railway volume keeps real daily rows across deploys; it falls
+# back to the working directory (old, wipe-prone behavior) when unset, e.g.
+# for local runs.
+_SEED_HISTORY_FILE = Path(__file__).parent / "history.csv"
+HISTORY_FILE = Path(os.environ.get("HISTORY_DIR", ".")) / "history.csv"
+if not HISTORY_FILE.exists() and _SEED_HISTORY_FILE.exists() and HISTORY_FILE != _SEED_HISTORY_FILE:
+    HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(_SEED_HISTORY_FILE, HISTORY_FILE)
 HISTORY_HEADERS = [
     "Date", "Section", "Type",
     "Rev Multiple (x)", "Enterprise Value ($B)", "Market Cap ($B)",

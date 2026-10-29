@@ -108,6 +108,22 @@ def build_stat_row(label: str, agg: dict, stat: str) -> dict:
 
 # ── Refresh logic ─────────────────────────────────────────────────────────────
 
+def is_market_open(now_et: datetime | None = None) -> bool:
+    """Whether US equity markets are in their regular 9:30am-4:00pm ET session.
+
+    Weekday + time-of-day only — does not account for market holidays, since
+    no holiday calendar is wired in. Used to freeze the live table at the
+    last close snapshot outside trading hours, so it matches the chart's
+    last plotted point.
+    """
+    now_et = now_et or datetime.now(ZoneInfo("America/New_York"))
+    if now_et.weekday() >= 5:  # 5=Saturday, 6=Sunday
+        return False
+    open_t = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+    close_t = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+    return open_t <= now_et <= close_t
+
+
 # Railway rebuilds the app's filesystem from git on every deploy. Without a
 # persistent volume, a history.csv written to the working directory gets
 # wiped on the next deploy, forcing backfill_history() to re-synthesize
@@ -702,7 +718,16 @@ HTML_TEMPLATE = ROW_MACROS + r"""<!DOCTYPE html>
     status.textContent = "Fetching data...";
     fetch("/api/refresh", { method: "POST" })
       .then(r => r.json())
-      .then(() => { status.textContent = "Fetching..."; pollForUpdate(); })
+      .then(res => {
+        if (res.status === "market_closed") {
+          status.textContent = "Market closed — showing last close.";
+          btn.disabled = false;
+          btn.querySelector("svg").classList.remove("spin");
+          setTimeout(() => { status.textContent = ""; }, 4000);
+          return;
+        }
+        status.textContent = "Fetching..."; pollForUpdate();
+      })
       .catch(() => { status.textContent = "Error."; btn.disabled = false; btn.querySelector("svg").classList.remove("spin"); });
   }
 
@@ -887,7 +912,14 @@ def api_table():
 
 @app.route("/api/refresh", methods=["POST"])
 def api_refresh():
-    """Trigger an immediate data refresh (runs in background thread)."""
+    """Trigger an immediate data refresh (runs in background thread).
+
+    Outside market hours the table is meant to stay frozen at the last
+    close snapshot (matching the chart's last point), so a manual refresh
+    click is a no-op rather than pulling a new live quote.
+    """
+    if not is_market_open():
+        return jsonify({"status": "market_closed"})
     t = threading.Thread(target=refresh_data, daemon=True)
     t.start()
     return jsonify({"status": "refreshing"})
@@ -992,8 +1024,16 @@ scheduler.add_job(scheduled_refresh, "cron", hour=16, minute=30, id="daily_refre
 # on a manual "Refresh Now" click — a container left running all day would
 # show numbers frozen from whenever it last fetched, no matter how much the
 # market moved intraday. Keep the cache current during the trading day too.
+# The is_market_open() check inside the wrapper (rather than a tighter cron
+# window) is what actually freezes the table outside the 9:30-4:00 session —
+# the cron window alone runs through 9:00 and past 4:00.
+def _intraday_refresh_job() -> None:
+    if is_market_open():
+        refresh_data()
+
+
 scheduler.add_job(
-    refresh_data, "cron",
+    _intraday_refresh_job, "cron",
     day_of_week="mon-fri", hour="9-16", minute="*/15",
     id="intraday_refresh", timezone="America/New_York",
 )

@@ -26,7 +26,13 @@ from app import fetch_ticker_data, load_tickers, summary_stats, _agg, NUMERIC_KE
 
 app = Flask(__name__)
 
-CACHE_FILE = Path("web_cache.json")
+# Shares HISTORY_DIR (the mounted Railway volume) with HISTORY_FILE below, so
+# the live snapshot survives a redeploy too. Without this, every deploy wiped
+# web_cache.json, so _startup_refresh_and_backfill() saw an empty cache and
+# did an unconditional live fetch on boot — even outside market hours —
+# overwriting the frozen last-close snapshot with whatever Yahoo returned at
+# that moment, which is exactly the mismatch this was supposed to prevent.
+CACHE_FILE = Path(os.environ.get("HISTORY_DIR", ".")) / "web_cache.json"
 _lock = threading.Lock()
 _cache: dict = {"data": [], "last_updated": None}
 
@@ -35,6 +41,7 @@ _cache: dict = {"data": [], "last_updated": None}
 
 def save_cache() -> None:
     with _lock:
+        CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
         CACHE_FILE.write_text(json.dumps(_cache, default=str))
 
 

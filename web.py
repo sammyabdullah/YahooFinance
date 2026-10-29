@@ -138,9 +138,21 @@ def is_market_open(now_et: datetime | None = None) -> bool:
 # mounted Railway volume keeps real daily rows across deploys; it falls
 # back to the working directory (old, wipe-prone behavior) when unset, e.g.
 # for local runs.
+if not os.environ.get("HISTORY_DIR"):
+    print(
+        "[startup] WARNING: HISTORY_DIR is not set — history.csv and "
+        "web_cache.json will be written to the container's ephemeral "
+        "filesystem and LOST on the next deploy. Set HISTORY_DIR to the "
+        "mounted Railway volume path to persist real data across deploys."
+    )
 _SEED_HISTORY_FILE = Path(__file__).parent / "history.csv"
 HISTORY_FILE = Path(os.environ.get("HISTORY_DIR", ".")) / "history.csv"
 if not HISTORY_FILE.exists() and _SEED_HISTORY_FILE.exists() and HISTORY_FILE != _SEED_HISTORY_FILE:
+    # Only runs when the volume's history.csv doesn't exist yet (first boot
+    # after the volume was provisioned, or the volume was ever lost/detached).
+    # It seeds from the git-committed copy and never overwrites an existing
+    # volume file, so a volume that already has real rows is untouched.
+    print(f"[startup] {HISTORY_FILE} not found on HISTORY_DIR — seeding from committed history.csv.")
     HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(_SEED_HISTORY_FILE, HISTORY_FILE)
 HISTORY_HEADERS = [

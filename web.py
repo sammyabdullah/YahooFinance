@@ -359,7 +359,19 @@ def refresh_data() -> None:
 
 
 def scheduled_refresh() -> None:
-    """Daily 4:30 PM refresh — fetches data, backfills any gap, then appends today."""
+    """Daily 4:30 PM refresh — fetches data, backfills any gap, then appends today.
+
+    The cron trigger itself fires every day, including weekends, but there is
+    no new close to capture on a weekend and append_history() already skips
+    writing one. Re-fetching anyway used to overwrite the cache with a fresh
+    (slightly different) Yahoo snapshot each day, drifting the live table
+    away from the frozen Friday-close row still showing on the chart. Skip
+    the whole job outside weekdays so the cache stays untouched until Monday.
+    """
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+    if now_et.weekday() >= 5:  # 5=Saturday, 6=Sunday
+        print(f"[{now_et.strftime('%H:%M:%S')}] Skipping scheduled refresh — weekend.")
+        return
     refresh_data()
     backfill_history()
     with _lock:

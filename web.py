@@ -454,7 +454,7 @@ ROW_MACROS = r"""
 
 {% macro stat_row(s) %}
 <tr class="stat-row">
-  <td colspan="3">{{ s.name }}</td>
+  <td colspan="4">{{ s.name }}</td>
   <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
   <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
   <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>

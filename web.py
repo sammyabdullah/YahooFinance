@@ -72,6 +72,16 @@ def fmt_pct(value) -> str:
         return None
 
 
+def fmt_pct_raw(value) -> str:
+    """Round a value already in percent units (1.23 -> 1.2), unlike fmt_pct."""
+    if value is None:
+        return None
+    try:
+        return round(float(value), 1)
+    except (TypeError, ValueError):
+        return None
+
+
 def build_row(d: dict) -> dict:
     """Convert a raw data dict into display-ready values for the template."""
     if d.get("error"):
@@ -80,6 +90,7 @@ def build_row(d: dict) -> dict:
     return {
         "ticker": d["ticker"],
         "name": d["name"],
+        "day_change_pct": fmt_pct_raw(d.get("day_change_pct")),
         "market_cap": fmt_billions(d.get("market_cap")),
         "revenue": fmt_billions(d.get("revenue")),
         "rev_growth": fmt_pct(d.get("rev_growth")),
@@ -389,10 +400,11 @@ ROW_MACROS = r"""
 {% macro ticker_row(row) %}
 {% if row.error %}
 <tr class="error-row">
-  <td colspan="12">Error ({{ row.ticker }}): {{ row.error[:80] }}</td>
+  <td colspan="13">Error ({{ row.ticker }}): {{ row.error[:80] }}</td>
 </tr>
 {% else %}
 <tr
+  data-day-change="{{ row.day_change_pct if row.day_change_pct is not none else '' }}"
   data-market-cap="{{ row.market_cap if row.market_cap is not none else '' }}"
   data-revenue="{{ row.revenue if row.revenue is not none else '' }}"
   data-rev-growth="{{ row.rev_growth if row.rev_growth is not none else '' }}"
@@ -406,6 +418,11 @@ ROW_MACROS = r"""
 >
   <td>{{ row.name }}</td>
   <td>{{ row.ticker }}</td>
+  <td>
+    {% if row.day_change_pct is not none %}
+      <span class="{{ 'val-pos' if row.day_change_pct >= 0 else 'val-neg' }}">{{ '+' if row.day_change_pct >= 0 else '' }}{{ row.day_change_pct }}%</span>
+    {% else %}<span class="val-null">—</span>{% endif %}
+  </td>
   <td>{% if row.rev_multiple is not none %}<span class="val-mult">{{ row.rev_multiple }}x</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
   <td>{% if row.ev is not none %}<span class="val-ev">${{ row.ev }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
   <td>{% if row.market_cap is not none %}<span class="val-pos">${{ row.market_cap }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
@@ -430,7 +447,7 @@ ROW_MACROS = r"""
 
 {% macro stat_row(s) %}
 <tr class="stat-row">
-  <td colspan="2">{{ s.name }}</td>
+  <td colspan="3">{{ s.name }}</td>
   <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
   <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
   <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
@@ -445,8 +462,8 @@ ROW_MACROS = r"""
 {% endmacro %}
 
 {% macro stats_block(title, stats) %}
-<tr class="stats-header"><td colspan="12">{{ title }}</td></tr>
-<tr class="section-cols"><td></td><td></td><td>Rev Mult.</td><td>Ent. Value</td><td>Mkt Cap</td><td>LTM Rev</td><td>Rev Growth</td><td>LTM EBITDA</td><td>EBITDA Margin</td><td>LTM Op CF</td><td>Debt</td><td>Cash</td></tr>
+<tr class="stats-header"><td colspan="13">{{ title }}</td></tr>
+<tr class="section-cols"><td></td><td></td><td></td><td>Rev Mult.</td><td>Ent. Value</td><td>Mkt Cap</td><td>LTM Rev</td><td>Rev Growth</td><td>LTM EBITDA</td><td>EBITDA Margin</td><td>LTM Op CF</td><td>Debt</td><td>Cash</td></tr>
 {% for s in stats %}{{ stat_row(s) }}{% endfor %}
 {% endmacro %}
 """
@@ -650,16 +667,17 @@ HTML_TEMPLATE = ROW_MACROS + r"""<!DOCTYPE html>
       <tr>
         <th onclick="sortTable(0)">Company</th>
         <th onclick="sortTable(1)">Ticker</th>
-        <th onclick="sortTable(2)" title="Enterprise Value / LTM Revenue">Rev Mult.</th>
-        <th onclick="sortTable(3)" title="Enterprise Value = Mkt Cap + Debt - Cash ($B)">Ent. Value</th>
-        <th onclick="sortTable(4)" title="Market Capitalization ($B)">Mkt Cap</th>
-        <th onclick="sortTable(5)" title="Last Twelve Months Revenue ($B)">LTM Rev</th>
-        <th onclick="sortTable(6)" title="Year-over-Year Revenue Growth">Rev Growth</th>
-        <th onclick="sortTable(7)" title="LTM EBITDA ($B)">LTM EBITDA</th>
-        <th onclick="sortTable(8)" title="EBITDA / LTM Revenue">EBITDA Margin</th>
-        <th onclick="sortTable(9)" title="LTM Operating Cash Flow ($B)">LTM Op CF</th>
-        <th onclick="sortTable(10)" title="Total Debt ($B)">Debt</th>
-        <th onclick="sortTable(11)" title="Total Cash ($B)">Cash</th>
+        <th onclick="sortTable(2)" title="Day's price change">Day %</th>
+        <th onclick="sortTable(3)" title="Enterprise Value / LTM Revenue">Rev Mult.</th>
+        <th onclick="sortTable(4)" title="Enterprise Value = Mkt Cap + Debt - Cash ($B)">Ent. Value</th>
+        <th onclick="sortTable(5)" title="Market Capitalization ($B)">Mkt Cap</th>
+        <th onclick="sortTable(6)" title="Last Twelve Months Revenue ($B)">LTM Rev</th>
+        <th onclick="sortTable(7)" title="Year-over-Year Revenue Growth">Rev Growth</th>
+        <th onclick="sortTable(8)" title="LTM EBITDA ($B)">LTM EBITDA</th>
+        <th onclick="sortTable(9)" title="EBITDA / LTM Revenue">EBITDA Margin</th>
+        <th onclick="sortTable(10)" title="LTM Operating Cash Flow ($B)">LTM Op CF</th>
+        <th onclick="sortTable(11)" title="Total Debt ($B)">Debt</th>
+        <th onclick="sortTable(12)" title="Total Cash ($B)">Cash</th>
       </tr>
     </thead>
     <tbody id="ticker-rows">
@@ -670,7 +688,7 @@ HTML_TEMPLATE = ROW_MACROS + r"""<!DOCTYPE html>
       {{ stats_block("Summary Statistics", stats) }}
     </tbody>
     <tbody>
-      <tr class="chart-row"><td colspan="12"><div class="chart-pair"><div class="chart-box"><canvas id="chart-all-median"></canvas></div><div class="chart-box"><canvas id="chart-all-average"></canvas></div></div></td></tr>
+      <tr class="chart-row"><td colspan="13"><div class="chart-pair"><div class="chart-box"><canvas id="chart-all-median"></canvas></div><div class="chart-box"><canvas id="chart-all-average"></canvas></div></div></td></tr>
     </tbody>
     {% endif %}
     {% if above_stats %}
@@ -678,7 +696,7 @@ HTML_TEMPLATE = ROW_MACROS + r"""<!DOCTYPE html>
       {{ stats_block("Above Median Growth Companies", above_stats) }}
     </tbody>
     <tbody>
-      <tr class="chart-row"><td colspan="12"><div class="chart-pair"><div class="chart-box"><canvas id="chart-above-median"></canvas></div><div class="chart-box"><canvas id="chart-above-average"></canvas></div></div></td></tr>
+      <tr class="chart-row"><td colspan="13"><div class="chart-pair"><div class="chart-box"><canvas id="chart-above-median"></canvas></div><div class="chart-box"><canvas id="chart-above-average"></canvas></div></div></td></tr>
     </tbody>
     {% endif %}
     {% if top30_stats %}
@@ -686,7 +704,7 @@ HTML_TEMPLATE = ROW_MACROS + r"""<!DOCTYPE html>
       {{ stats_block("Top 30 Fastest Growing Companies", top30_stats) }}
     </tbody>
     <tbody>
-      <tr class="chart-row"><td colspan="12"><div class="chart-pair"><div class="chart-box"><canvas id="chart-top30grow-median"></canvas></div><div class="chart-box"><canvas id="chart-top30grow-average"></canvas></div></div></td></tr>
+      <tr class="chart-row"><td colspan="13"><div class="chart-pair"><div class="chart-box"><canvas id="chart-top30grow-median"></canvas></div><div class="chart-box"><canvas id="chart-top30grow-average"></canvas></div></div></td></tr>
     </tbody>
     {% endif %}
     {% if top30_profitable_stats %}
@@ -694,7 +712,7 @@ HTML_TEMPLATE = ROW_MACROS + r"""<!DOCTYPE html>
       {{ stats_block("Top 30 Most Profitable Companies", top30_profitable_stats) }}
     </tbody>
     <tbody>
-      <tr class="chart-row"><td colspan="12"><div class="chart-pair"><div class="chart-box"><canvas id="chart-top30prof-median"></canvas></div><div class="chart-box"><canvas id="chart-top30prof-average"></canvas></div></div></td></tr>
+      <tr class="chart-row"><td colspan="13"><div class="chart-pair"><div class="chart-box"><canvas id="chart-top30prof-median"></canvas></div><div class="chart-box"><canvas id="chart-top30prof-average"></canvas></div></div></td></tr>
     </tbody>
     {% endif %}
   </table>
@@ -707,7 +725,7 @@ HTML_TEMPLATE = ROW_MACROS + r"""<!DOCTYPE html>
 </div>
 <script>
   let sortCol = -1, sortAsc = true;
-  const dataAttrs = [null, null, "rev-multiple", "ev", "market-cap", "revenue", "rev-growth", "ebitda", "ebitda-margin", "ocf", "debt", "cash"];
+  const dataAttrs = [null, null, "day-change", "rev-multiple", "ev", "market-cap", "revenue", "rev-growth", "ebitda", "ebitda-margin", "ocf", "debt", "cash"];
 
   function applySort() {
     if (sortCol === -1) return;

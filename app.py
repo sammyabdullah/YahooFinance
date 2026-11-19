@@ -60,6 +60,16 @@ def fmt_pct(value, decimals=1) -> str:
         return "—"
 
 
+def fmt_pct_raw(value, decimals=1) -> str:
+    """Format a value already in percent units (1.23 -> +1.2%)."""
+    if value is None:
+        return "—"
+    try:
+        return f"{float(value):+.{decimals}f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
 def fetch_ticker_data(ticker: str) -> dict:
     """Fetch all required metrics for a single ticker."""
     try:
@@ -68,6 +78,9 @@ def fetch_ticker_data(ticker: str) -> dict:
 
         # Market cap — Yahoo's own figure, as shown on the site.
         market_cap = info.get("marketCap")
+
+        # Day's price change, already in percent units (e.g. 1.23 == +1.23%)
+        day_change_pct = info.get("regularMarketChangePercent")
 
         # LTM Revenue — prefer trailing, fall back to annual
         revenue = info.get("totalRevenue")
@@ -119,6 +132,7 @@ def fetch_ticker_data(ticker: str) -> dict:
             "ticker": ticker.upper(),
             "name": name,
             "market_cap": market_cap,
+            "day_change_pct": day_change_pct,
             "revenue": revenue,
             "rev_growth": rev_growth,
             "ebitda": ebitda,
@@ -188,6 +202,7 @@ def render_table(data: list[dict]) -> None:
 
     table.add_column("Company",       style="white",       max_width=28)
     table.add_column("Ticker",        style="bold cyan",   no_wrap=True)
+    table.add_column("Day %",         justify="right",     style="yellow")
     table.add_column("Mkt Cap",       justify="right",     style="green")
     table.add_column("LTM Rev",       justify="right",     style="green")
     table.add_column("Rev Growth",    justify="right",     style="yellow")
@@ -204,13 +219,14 @@ def render_table(data: list[dict]) -> None:
         if d.get("error"):
             table.add_row(
                 f"[red]Error: {d['error'][:40]}[/]", d["ticker"],
-                "—", "—", "—", "—", "—", "—", "—", "—", "—", "—",
+                "—", "—", "—", "—", "—", "—", "—", "—", "—", "—", "—",
                 end_section=last,
             )
         else:
             rev_mult = d.get("rev_multiple")
             table.add_row(
                 d["name"], d["ticker"],
+                fmt_pct_raw(d.get("day_change_pct")),
                 fmt(d["market_cap"]),
                 fmt(d["revenue"]),
                 fmt_pct(d.get("rev_growth")),
@@ -233,7 +249,7 @@ def render_table(data: list[dict]) -> None:
             em = agg["ebitda_margin"][stat]
             rm = agg["rev_multiple"][stat]
             return [
-                f"[dim italic]{label}[/]", "",
+                f"[dim italic]{label}[/]", "", "",
                 fmt(agg["market_cap"][stat]),
                 fmt(agg["revenue"][stat]),
                 fmt_pct(g) if g is not None else "—",

@@ -92,6 +92,22 @@ def fetch_ticker_data(ticker: str) -> dict:
         else:
             day_change_pct = None
 
+        # 1-year price change. Yahoo's own "52WeekChange" info field comes from
+        # the same flaky quote-endpoint call as regularMarketChangePercent (see
+        # day_change_pct above) and is unreliable here too, so derive it instead
+        # from a year of daily closes via t.history() — the same price-history
+        # mechanism this app already relies on for its charts.
+        try:
+            hist_1y = t.history(period="1y", auto_adjust=False)
+            if hist_1y is not None and len(hist_1y) >= 2:
+                first_close = float(hist_1y["Close"].iloc[0])
+                last_close = float(hist_1y["Close"].iloc[-1])
+                year_change_pct = (last_close - first_close) / first_close * 100 if first_close else None
+            else:
+                year_change_pct = None
+        except Exception:
+            year_change_pct = None
+
         # LTM Revenue — prefer trailing, fall back to annual
         revenue = info.get("totalRevenue")
 
@@ -143,6 +159,7 @@ def fetch_ticker_data(ticker: str) -> dict:
             "name": name,
             "market_cap": market_cap,
             "day_change_pct": day_change_pct,
+            "year_change_pct": year_change_pct,
             "revenue": revenue,
             "rev_growth": rev_growth,
             "ebitda": ebitda,
@@ -213,6 +230,7 @@ def render_table(data: list[dict]) -> None:
     table.add_column("Company",       style="white",       max_width=28)
     table.add_column("Ticker",        style="bold cyan",   no_wrap=True)
     table.add_column("Day %",         justify="right",     style="yellow")
+    table.add_column("1Y %",          justify="right",     style="yellow")
     table.add_column("Mkt Cap",       justify="right",     style="green")
     table.add_column("LTM Rev",       justify="right",     style="green")
     table.add_column("Rev Growth",    justify="right",     style="yellow")
@@ -229,7 +247,7 @@ def render_table(data: list[dict]) -> None:
         if d.get("error"):
             table.add_row(
                 f"[red]Error: {d['error'][:40]}[/]", d["ticker"],
-                "—", "—", "—", "—", "—", "—", "—", "—", "—", "—", "—",
+                "—", "—", "—", "—", "—", "—", "—", "—", "—", "—", "—", "—",
                 end_section=last,
             )
         else:
@@ -237,6 +255,7 @@ def render_table(data: list[dict]) -> None:
             table.add_row(
                 d["name"], d["ticker"],
                 fmt_pct_raw(d.get("day_change_pct")),
+                fmt_pct_raw(d.get("year_change_pct")),
                 fmt(d["market_cap"]),
                 fmt(d["revenue"]),
                 fmt_pct(d.get("rev_growth")),

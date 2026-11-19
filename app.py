@@ -185,7 +185,7 @@ def fetch_all(tickers: list[str]) -> list[dict]:
 
 # ── Summary stats ─────────────────────────────────────────────────────────────
 
-NUMERIC_KEYS = ["market_cap", "revenue", "rev_growth", "ebitda", "ebitda_margin", "ocf", "debt", "cash", "ev", "rev_multiple"]
+NUMERIC_KEYS = ["day_change_pct", "year_change_pct", "market_cap", "revenue", "rev_growth", "ebitda", "ebitda_margin", "ocf", "debt", "cash", "ev", "rev_multiple"]
 
 
 def _agg(subset: list[dict]) -> dict:
@@ -277,8 +277,12 @@ def render_table(data: list[dict]) -> None:
             g = agg["rev_growth"][stat]
             em = agg["ebitda_margin"][stat]
             rm = agg["rev_multiple"][stat]
+            dc = agg["day_change_pct"][stat]
+            yc = agg["year_change_pct"][stat]
             return [
-                f"[dim italic]{label}[/]", "", "",
+                f"[dim italic]{label}[/]", "",
+                fmt_pct_raw(dc) if dc is not None else "—",
+                fmt_pct_raw(yc) if yc is not None else "—",
                 fmt(agg["market_cap"][stat]),
                 fmt(agg["revenue"][stat]),
                 fmt_pct(g) if g is not None else "—",

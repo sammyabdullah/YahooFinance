@@ -112,6 +112,8 @@ def build_stat_row(label: str, agg: dict, stat: str) -> dict:
     em = agg["ebitda_margin"][stat]
     return {
         "name": label,
+        "day_change_pct": fmt_pct_raw(agg["day_change_pct"][stat]),
+        "year_change_pct": fmt_pct_raw(agg["year_change_pct"][stat]),
         "market_cap": fmt_billions(agg["market_cap"][stat]),
         "revenue": fmt_billions(agg["revenue"][stat]),
         "rev_growth": fmt_pct(g),
@@ -454,7 +456,9 @@ ROW_MACROS = r"""
 
 {% macro stat_row(s) %}
 <tr class="stat-row">
-  <td colspan="4">{{ s.name }}</td>
+  <td colspan="2">{{ s.name }}</td>
+  <td>{% if s.day_change_pct is not none %}<span class="{{ 'val-pos' if s.day_change_pct >= 0 else 'val-neg' }}">{{ '+' if s.day_change_pct >= 0 else '' }}{{ s.day_change_pct }}%</span>{% else %}—{% endif %}</td>
+  <td>{% if s.year_change_pct is not none %}<span class="{{ 'val-pos' if s.year_change_pct >= 0 else 'val-neg' }}">{{ '+' if s.year_change_pct >= 0 else '' }}{{ s.year_change_pct }}%</span>{% else %}—{% endif %}</td>
   <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
   <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
   <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>

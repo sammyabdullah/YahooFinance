@@ -1059,7 +1059,14 @@ def download_history():
 # Runs at import time so both `python web.py` and `gunicorn web:app` initialize.
 
 def _startup_refresh_and_backfill() -> None:
-    if not _cache.get("data"):
+    # Always refresh on boot if the market is open, not just when the cache
+    # is empty — otherwise a deploy during market hours serves the persisted
+    # /data snapshot from before the deploy (stale intraday fields, e.g. a
+    # newly added column) until the next 15-minute intraday job fires.
+    # is_market_open() still keeps this a no-op outside trading hours, so the
+    # frozen last-close snapshot a deploy makes outside market hours is
+    # untouched, same as before.
+    if not _cache.get("data") or is_market_open():
         refresh_data()
     backfill_history()
 

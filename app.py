@@ -79,8 +79,18 @@ def fetch_ticker_data(ticker: str) -> dict:
         # Market cap — Yahoo's own figure, as shown on the site.
         market_cap = info.get("marketCap")
 
-        # Day's price change, already in percent units (e.g. 1.23 == +1.23%)
-        day_change_pct = info.get("regularMarketChangePercent")
+        # Day's price change. info["regularMarketChangePercent"] comes from a
+        # separate, flaky quote-endpoint call that this yfinance version
+        # doesn't reliably populate, so derive it instead from currentPrice
+        # (financialData module) and regularMarketPreviousClose (summaryDetail
+        # module) — both part of the module list actually requested below,
+        # same as market_cap.
+        current_price = info.get("currentPrice")
+        prev_close = info.get("regularMarketPreviousClose") or info.get("previousClose")
+        if current_price is not None and prev_close:
+            day_change_pct = (current_price - prev_close) / prev_close * 100
+        else:
+            day_change_pct = None
 
         # LTM Revenue — prefer trailing, fall back to annual
         revenue = info.get("totalRevenue")

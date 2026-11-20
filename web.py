@@ -474,7 +474,7 @@ ROW_MACROS = r"""
 
 {% macro stats_block(title, stats) %}
 <tr class="stats-header"><td colspan="14">{{ title }}</td></tr>
-<tr class="section-cols"><td></td><td></td><td></td><td></td><td>Rev Mult.</td><td>Ent. Value</td><td>Mkt Cap</td><td>LTM Rev</td><td>Rev Growth</td><td>LTM EBITDA</td><td>EBITDA Margin</td><td>LTM Op CF</td><td>Debt</td><td>Cash</td></tr>
+<tr class="section-cols"><td></td><td></td><td>Day %</td><td>1Y %</td><td>Rev Mult.</td><td>Ent. Value</td><td>Mkt Cap</td><td>LTM Rev</td><td>Rev Growth</td><td>LTM EBITDA</td><td>EBITDA Margin</td><td>LTM Op CF</td><td>Debt</td><td>Cash</td></tr>
 {% for s in stats %}{{ stat_row(s) }}{% endfor %}
 {% endmacro %}
 """

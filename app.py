@@ -93,24 +93,29 @@ def fetch_ticker_data(ticker: str) -> dict:
         else:
             day_change_pct = None
 
-        # 1-year price change. Yahoo's own "52WeekChange" info field comes from
-        # the same flaky quote-endpoint call as regularMarketChangePercent (see
-        # day_change_pct above) and is unreliable here too, so derive it instead
-        # from a year of daily closes via t.history() — the same price-history
-        # mechanism this app already relies on for its charts.
-        try:
-            hist_1y = t.history(period="1y", auto_adjust=False)
-            if hist_1y is not None and len(hist_1y) >= 2:
-                first_close = float(hist_1y["Close"].iloc[0])
-                last_close = float(hist_1y["Close"].iloc[-1])
-                if math.isfinite(first_close) and math.isfinite(last_close) and first_close:
-                    year_change_pct = (last_close - first_close) / first_close * 100
+        # 1-year price change — prefer Yahoo's own "52WeekChange" info field
+        # directly, same as market_cap above. It comes from the same
+        # quote-endpoint call as regularMarketChangePercent, which this
+        # yfinance version doesn't always populate (see day_change_pct), so
+        # fall back to deriving it from a year of daily closes via
+        # t.history() whenever Yahoo doesn't supply it.
+        year_change_raw = info.get("52WeekChange")
+        if year_change_raw is not None and math.isfinite(year_change_raw):
+            year_change_pct = year_change_raw * 100
+        else:
+            try:
+                hist_1y = t.history(period="1y", auto_adjust=False)
+                if hist_1y is not None and len(hist_1y) >= 2:
+                    first_close = float(hist_1y["Close"].iloc[0])
+                    last_close = float(hist_1y["Close"].iloc[-1])
+                    if math.isfinite(first_close) and math.isfinite(last_close) and first_close:
+                        year_change_pct = (last_close - first_close) / first_close * 100
+                    else:
+                        year_change_pct = None
                 else:
                     year_change_pct = None
-            else:
+            except Exception:
                 year_change_pct = None
-        except Exception:
-            year_change_pct = None
 
         # LTM Revenue — prefer trailing, fall back to annual
         revenue = info.get("totalRevenue")

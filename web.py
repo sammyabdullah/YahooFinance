@@ -345,11 +345,14 @@ def backfill_history() -> None:
                 continue
             ratio = float(day_close) / ref_close[t]
             market_cap = base["market_cap"] * ratio
-            debt = base.get("debt") or 0
-            cash = base.get("cash") or 0
-            ev = market_cap + debt - cash
+            # Scale the same enterprise value Yahoo gave us for `base` by the
+            # price ratio, rather than recomputing EV from debt/cash — keeps
+            # this estimate consistent with the live, Yahoo-sourced EV/Revenue
+            # multiple used on every real (non-backfilled) day.
+            base_ev = base.get("ev")
+            ev = base_ev * ratio if base_ev is not None else None
             revenue = base.get("revenue")
-            rev_multiple = (ev / revenue) if revenue else None
+            rev_multiple = (ev / revenue) if (ev is not None and revenue) else None
             synthetic.append({**base, "market_cap": market_cap, "ev": ev, "rev_multiple": rev_multiple})
         if synthetic and _write_history_for_date(synthetic, day):
             written += 1

@@ -7,6 +7,7 @@ for a watchlist of tickers.
 
 import csv
 import json
+import math
 import os
 import statistics
 import sys
@@ -102,7 +103,10 @@ def fetch_ticker_data(ticker: str) -> dict:
             if hist_1y is not None and len(hist_1y) >= 2:
                 first_close = float(hist_1y["Close"].iloc[0])
                 last_close = float(hist_1y["Close"].iloc[-1])
-                year_change_pct = (last_close - first_close) / first_close * 100 if first_close else None
+                if math.isfinite(first_close) and math.isfinite(last_close) and first_close:
+                    year_change_pct = (last_close - first_close) / first_close * 100
+                else:
+                    year_change_pct = None
             else:
                 year_change_pct = None
         except Exception:
@@ -140,16 +144,22 @@ def fetch_ticker_data(ticker: str) -> dict:
 
         name = info.get("shortName") or info.get("longName") or ticker
 
-        # Enterprise Value = Market Cap + Debt - Cash
-        if market_cap is not None and debt is not None and cash is not None:
-            ev = market_cap + debt - cash
-        elif market_cap is not None:
-            ev = market_cap + (debt or 0) - (cash or 0)
-        else:
+        # Enterprise Value and Revenue Multiple — pulled directly from Yahoo's
+        # own figures (defaultKeyStatistics module, one of the five modules
+        # this app actually requests, so these are reliably populated) rather
+        # than derived from market_cap + debt - cash, which could drift from
+        # what Yahoo itself shows. Same rationale as using Yahoo's own
+        # marketCap directly (see market_cap above).
+        ev = info.get("enterpriseValue")
+        rev_multiple = info.get("enterpriseToRevenue")
+        if rev_multiple is not None and not math.isfinite(rev_multiple):
+            rev_multiple = None
+        if ev is not None and not math.isfinite(ev):
             ev = None
-
-        # Revenue Multiple = EV / LTM Revenue
-        rev_multiple = (ev / revenue) if (ev is not None and revenue) else None
+        if ev is None and market_cap is not None:
+            ev = market_cap + (debt or 0) - (cash or 0)
+        if rev_multiple is None and ev is not None and revenue:
+            rev_multiple = ev / revenue
 
         # EBITDA Margin = EBITDA / Revenue
         ebitda_margin = (ebitda / revenue) if (ebitda is not None and revenue) else None
@@ -192,7 +202,7 @@ def _agg(subset: list[dict]) -> dict:
     """Return median and mean for each numeric key over a subset of rows."""
     result = {}
     for k in NUMERIC_KEYS:
-        vals = [d[k] for d in subset if d.get(k) is not None]
+        vals = [d[k] for d in subset if d.get(k) is not None and math.isfinite(d[k])]
         result[k] = {
             "median": statistics.median(vals) if vals else None,
             "mean":   statistics.mean(vals)   if vals else None,

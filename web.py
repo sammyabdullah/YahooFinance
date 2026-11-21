@@ -246,6 +246,42 @@ def _write_history_for_date(data: list[dict], date_str: str) -> bool:
     return True
 
 
+def _latest_history_multiples() -> dict:
+    """Latest (Rev Multiple x, Enterprise Value $) in history.csv per
+    (section, stat) — the same row /api/history serves as the chart's last
+    plotted point. The frozen (market-closed) table reads these back
+    instead of re-deriving its own aggregate, so the two are guaranteed to
+    show the same number for a trading day rather than just usually
+    agreeing.
+    """
+    if not HISTORY_FILE.exists():
+        return {}
+    out: dict = {}
+    with open(HISTORY_FILE, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            stat = "median" if row.get("Type") == "Median" else "mean"
+            key = (row.get("Section"), stat)
+            try:
+                rm = float(row["Rev Multiple (x)"]) if row.get("Rev Multiple (x)") else None
+            except (TypeError, ValueError):
+                rm = None
+            try:
+                ev = float(row["Enterprise Value ($B)"]) * 1e9 if row.get("Enterprise Value ($B)") else None
+            except (TypeError, ValueError):
+                ev = None
+            out[key] = (rm, ev)  # rows are appended in date order, so the latest wins
+    return out
+
+
+def _freeze_rev_multiple(section_name: str, agg: dict, hist_vals: dict) -> None:
+    """Overwrite agg's rev_multiple/ev with history.csv's latest row for
+    `section_name`, in place, for each stat ("median"/"mean") it has."""
+    for stat in ("median", "mean"):
+        vals = hist_vals.get((section_name, stat))
+        if vals is not None:
+            agg["rev_multiple"][stat], agg["ev"][stat] = vals
+
+
 def append_history(data: list[dict]) -> None:
     """Append today's summary stats to history.csv."""
     now_et = datetime.now(ZoneInfo("America/New_York"))
@@ -517,7 +553,13 @@ def compute_table_context() -> dict:
     top30_stats = []
     top30_profitable_stats = []
     if valid:
+        frozen = not is_market_open()
+        hist_vals = _latest_history_multiples() if frozen else {}
+
         all_agg, above_agg, _, n_above = summary_stats(raw_data)
+        if frozen:
+            _freeze_rev_multiple("All Companies", all_agg, hist_vals)
+            _freeze_rev_multiple("Above Median Growth", above_agg, hist_vals)
         stats = [
             build_stat_row("All — Median", all_agg, "median"),
             build_stat_row("All — Average", all_agg, "mean"),
@@ -532,6 +574,8 @@ def compute_table_context() -> dict:
         )[:30]
         if top30:
             top30_agg = _agg(top30)
+            if frozen:
+                _freeze_rev_multiple("Top 30 Fastest Growing", top30_agg, hist_vals)
             n30 = len(top30)
             top30_stats = [
                 build_stat_row(f"Top {n30} Fastest Growing — Median", top30_agg, "median"),
@@ -543,6 +587,8 @@ def compute_table_context() -> dict:
         )[:30]
         if top30_profitable:
             top30_prof_agg = _agg(top30_profitable)
+            if frozen:
+                _freeze_rev_multiple("Top 30 Most Profitable", top30_prof_agg, hist_vals)
             n30p = len(top30_profitable)
             top30_profitable_stats = [
                 build_stat_row(f"Top {n30p} Most Profitable — Median", top30_prof_agg, "median"),

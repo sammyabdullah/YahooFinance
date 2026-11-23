@@ -77,8 +77,27 @@ def fetch_ticker_data(ticker: str) -> dict:
         t = yf.Ticker(ticker)
         info = t.info
 
-        # Market cap — Yahoo's own figure, as shown on the site.
-        market_cap = info.get("marketCap")
+        # Market cap — priced off the live quote, not Yahoo's marketCap field.
+        # Yahoo's marketCap is not reliably refreshed intraday: on an up day
+        # it could still hold the prior close's value while currentPrice
+        # (which Day % below is computed from) had already moved, so Day %
+        # showed +3% while the rev multiple sat at exactly the prior close's
+        # number. Rebuilding it as currentPrice x shares keeps market cap,
+        # EV and the rev multiple moving in lockstep with Day %.
+        # impliedSharesOutstanding covers every share class (sharesOutstanding
+        # can be just one class for dual-class companies). If the rebuilt
+        # figure is wildly off Yahoo's (ADR ratios, share-count quirks), fall
+        # back to Yahoo's own marketCap rather than trust a bad share count.
+        yahoo_market_cap = info.get("marketCap")
+        live_price = info.get("currentPrice") or info.get("regularMarketPrice")
+        shares = info.get("impliedSharesOutstanding") or info.get("sharesOutstanding")
+        market_cap = yahoo_market_cap
+        if live_price and shares:
+            live_market_cap = float(live_price) * float(shares)
+            if math.isfinite(live_market_cap) and (
+                not yahoo_market_cap or 0.67 <= live_market_cap / yahoo_market_cap <= 1.5
+            ):
+                market_cap = live_market_cap
 
         # Day's price change. info["regularMarketChangePercent"] comes from a
         # separate, flaky quote-endpoint call that this yfinance version

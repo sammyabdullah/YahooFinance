@@ -149,22 +149,28 @@ def fetch_ticker_data(ticker: str) -> dict:
 
         name = info.get("shortName") or info.get("longName") or ticker
 
-        # Enterprise Value and Revenue Multiple — pulled directly from Yahoo's
-        # own figures (defaultKeyStatistics module, one of the five modules
-        # this app actually requests, so these are reliably populated) rather
-        # than derived from market_cap + debt - cash, which could drift from
-        # what Yahoo itself shows. Same rationale as using Yahoo's own
-        # marketCap directly (see market_cap above).
-        ev = info.get("enterpriseValue")
-        rev_multiple = info.get("enterpriseToRevenue")
-        if rev_multiple is not None and not math.isfinite(rev_multiple):
-            rev_multiple = None
+        # Enterprise Value and Revenue Multiple — derived from market_cap
+        # (live) + debt - cash, not Yahoo's own enterpriseValue/
+        # enterpriseToRevenue (defaultKeyStatistics module). Those fields are
+        # reliably *populated* but not reliably *live*: Yahoo recomputes
+        # defaultKeyStatistics on its own slower cadence, so on a big
+        # intraday move they can still reflect a prior, lower market cap
+        # while market_cap/currentPrice have already updated — producing a
+        # live rev multiple lower than the prior close's, even on an up day.
+        # Yahoo's fields are kept only as a fallback for when market_cap is
+        # unavailable.
+        ev = (market_cap + (debt or 0) - (cash or 0)) if market_cap is not None else info.get("enterpriseValue")
         if ev is not None and not math.isfinite(ev):
             ev = None
-        if ev is None and market_cap is not None:
-            ev = market_cap + (debt or 0) - (cash or 0)
-        if rev_multiple is None and ev is not None and revenue:
-            rev_multiple = ev / revenue
+        rev_multiple = (ev / revenue) if (ev is not None and revenue) else None
+        if rev_multiple is None:
+            rev_multiple = info.get("enterpriseToRevenue")
+        if rev_multiple is not None and not math.isfinite(rev_multiple):
+            rev_multiple = None
+        if ev is None:
+            ev = info.get("enterpriseValue")
+            if ev is not None and not math.isfinite(ev):
+                ev = None
 
         # EBITDA Margin = EBITDA / Revenue
         ebitda_margin = (ebitda / revenue) if (ebitda is not None and revenue) else None

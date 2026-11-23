@@ -40,18 +40,37 @@ _cache: dict = {"data": [], "last_updated": None}
 # ── Cache helpers ─────────────────────────────────────────────────────────────
 
 def save_cache() -> None:
+    global _cache_mtime
     with _lock:
         CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
         CACHE_FILE.write_text(json.dumps(_cache, default=str))
+        _cache_mtime = CACHE_FILE.stat().st_mtime
+
+
+_cache_mtime: float = 0.0
 
 
 def load_cache() -> None:
-    global _cache
+    global _cache, _cache_mtime
     if CACHE_FILE.exists():
         try:
+            mtime = CACHE_FILE.stat().st_mtime
             _cache = json.loads(CACHE_FILE.read_text())
+            _cache_mtime = mtime
         except Exception:
             pass
+
+
+def reload_cache_if_newer() -> None:
+    """Pick up a web_cache.json written by another process (e.g. a second
+    gunicorn worker whose scheduler ran the refresh), so this worker doesn't
+    keep serving its own stale in-memory snapshot."""
+    try:
+        if CACHE_FILE.exists() and CACHE_FILE.stat().st_mtime > _cache_mtime:
+            with _lock:
+                load_cache()
+    except OSError:
+        pass
 
 
 def fmt_billions(value) -> str:
@@ -270,7 +289,21 @@ def _latest_history_multiples() -> dict:
             except (TypeError, ValueError):
                 ev = None
             out[key] = (rm, ev)  # rows are appended in date order, so the latest wins
+            out["_date"] = max(out.get("_date", ""), row.get("Date") or "")
     return out
+
+
+def _cache_trading_date(last_updated) -> str:
+    """ET date (YYYY-MM-DD) the cached snapshot was fetched on, or "" if unknown."""
+    if not last_updated:
+        return ""
+    try:
+        dt = datetime.fromisoformat(last_updated)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    except Exception:
+        return ""
 
 
 def _freeze_rev_multiple(section_name: str, agg: dict, hist_vals: dict) -> None:
@@ -541,6 +574,7 @@ def format_last_updated(last_updated) -> str:
 def compute_table_context() -> dict:
     """Build the row/stat data shown in the table — shared by the full page
     render and the /api/table refresh fragment."""
+    reload_cache_if_newer()
     with _lock:
         raw_data = list(_cache.get("data", []))
         last_updated = _cache.get("last_updated")
@@ -553,8 +587,13 @@ def compute_table_context() -> dict:
     top30_stats = []
     top30_profitable_stats = []
     if valid:
-        frozen = not is_market_open()
-        hist_vals = _latest_history_multiples() if frozen else {}
+        hist_vals = _latest_history_multiples() if not is_market_open() else {}
+        # Only freeze to history.csv once it holds a row for the same trading
+        # day as the cached snapshot. Between the 4:00 close and the 4:30 job
+        # that writes today's row (or if that job fails), the latest row is
+        # still the *previous* day's, and freezing to it would show
+        # yesterday's multiple next to today's Day %.
+        frozen = bool(hist_vals) and hist_vals.get("_date", "") >= _cache_trading_date(last_updated)
 
         all_agg, above_agg, _, n_above = summary_stats(raw_data)
         if frozen:

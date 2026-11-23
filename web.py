@@ -77,7 +77,7 @@ def fmt_billions(value) -> str:
     if value is None:
         return None
     try:
-        return round(float(value) / 1e9, 1)
+        return round(float(value) / 1e9, 2)
     except (TypeError, ValueError):
         return None
 
@@ -505,23 +505,23 @@ ROW_MACROS = r"""
     {% else %}<span class="val-null">—</span>{% endif %}
   </td>
   <td>{% if row.rev_multiple is not none %}<span class="val-mult">{{ row.rev_multiple }}x</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-  <td>{% if row.ev is not none %}<span class="val-ev">${{ row.ev }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-  <td>{% if row.market_cap is not none %}<span class="val-pos">${{ row.market_cap }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-  <td>{% if row.revenue is not none %}<span class="val-pos">${{ row.revenue }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>{% if row.ev is not none %}<span class="val-ev">${{ "%.2f"|format(row.ev) }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>{% if row.market_cap is not none %}<span class="val-pos">${{ "%.2f"|format(row.market_cap) }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>{% if row.revenue is not none %}<span class="val-pos">${{ "%.2f"|format(row.revenue) }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
   <td>
     {% if row.rev_growth is not none %}
       <span class="{{ 'val-pos' if row.rev_growth >= 0 else 'val-neg' }}">{{ '+' if row.rev_growth >= 0 else '' }}{{ row.rev_growth }}%</span>
     {% else %}<span class="val-null">—</span>{% endif %}
   </td>
-  <td>{% if row.ebitda is not none %}<span class="{{ 'val-pos' if row.ebitda >= 0 else 'val-neg' }}">${{ row.ebitda }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>{% if row.ebitda is not none %}<span class="{{ 'val-pos' if row.ebitda >= 0 else 'val-neg' }}">${{ "%.2f"|format(row.ebitda) }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
   <td>
     {% if row.ebitda_margin is not none %}
       <span class="{{ 'val-pos' if row.ebitda_margin >= 0 else 'val-neg' }}">{{ '+' if row.ebitda_margin >= 0 else '' }}{{ row.ebitda_margin }}%</span>
     {% else %}<span class="val-null">—</span>{% endif %}
   </td>
-  <td>{% if row.ocf is not none %}<span class="{{ 'val-pos' if row.ocf >= 0 else 'val-neg' }}">${{ row.ocf }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-  <td>{% if row.debt is not none %}<span class="val-debt">${{ row.debt }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
-  <td>{% if row.cash is not none %}<span class="val-cash">${{ row.cash }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>{% if row.ocf is not none %}<span class="{{ 'val-pos' if row.ocf >= 0 else 'val-neg' }}">${{ "%.2f"|format(row.ocf) }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>{% if row.debt is not none %}<span class="val-debt">${{ "%.2f"|format(row.debt) }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
+  <td>{% if row.cash is not none %}<span class="val-cash">${{ "%.2f"|format(row.cash) }}B</span>{% else %}<span class="val-null">—</span>{% endif %}</td>
 </tr>
 {% endif %}
 {% endmacro %}
@@ -532,15 +532,15 @@ ROW_MACROS = r"""
   <td>{% if s.day_change_pct is not none %}<span class="{{ 'val-pos' if s.day_change_pct >= 0 else 'val-neg' }}">{{ '+' if s.day_change_pct >= 0 else '' }}{{ s.day_change_pct }}%</span>{% else %}—{% endif %}</td>
   <td>{% if s.year_change_pct is not none %}<span class="{{ 'val-pos' if s.year_change_pct >= 0 else 'val-neg' }}">{{ '+' if s.year_change_pct >= 0 else '' }}{{ s.year_change_pct }}%</span>{% else %}—{% endif %}</td>
   <td>{% if s.rev_multiple is not none %}{{ s.rev_multiple }}x{% else %}—{% endif %}</td>
-  <td>{% if s.ev is not none %}${{ s.ev }}B{% else %}—{% endif %}</td>
-  <td>{% if s.market_cap is not none %}${{ s.market_cap }}B{% else %}—{% endif %}</td>
-  <td>{% if s.revenue is not none %}${{ s.revenue }}B{% else %}—{% endif %}</td>
+  <td>{% if s.ev is not none %}${{ "%.2f"|format(s.ev) }}B{% else %}—{% endif %}</td>
+  <td>{% if s.market_cap is not none %}${{ "%.2f"|format(s.market_cap) }}B{% else %}—{% endif %}</td>
+  <td>{% if s.revenue is not none %}${{ "%.2f"|format(s.revenue) }}B{% else %}—{% endif %}</td>
   <td>{% if s.rev_growth is not none %}{{ '+' if s.rev_growth >= 0 else '' }}{{ s.rev_growth }}%{% else %}—{% endif %}</td>
-  <td>{% if s.ebitda is not none %}${{ s.ebitda }}B{% else %}—{% endif %}</td>
+  <td>{% if s.ebitda is not none %}${{ "%.2f"|format(s.ebitda) }}B{% else %}—{% endif %}</td>
   <td>{% if s.ebitda_margin is not none %}{{ '+' if s.ebitda_margin >= 0 else '' }}{{ s.ebitda_margin }}%{% else %}—{% endif %}</td>
-  <td>{% if s.ocf is not none %}${{ s.ocf }}B{% else %}—{% endif %}</td>
-  <td>{% if s.debt is not none %}${{ s.debt }}B{% else %}—{% endif %}</td>
-  <td>{% if s.cash is not none %}${{ s.cash }}B{% else %}—{% endif %}</td>
+  <td>{% if s.ocf is not none %}${{ "%.2f"|format(s.ocf) }}B{% else %}—{% endif %}</td>
+  <td>{% if s.debt is not none %}${{ "%.2f"|format(s.debt) }}B{% else %}—{% endif %}</td>
+  <td>{% if s.cash is not none %}${{ "%.2f"|format(s.cash) }}B{% else %}—{% endif %}</td>
 </tr>
 {% endmacro %}
 
